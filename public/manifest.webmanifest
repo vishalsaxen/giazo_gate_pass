@@ -1,0 +1,12 @@
+{
+  "name": "GiaZo Gate Pass",
+  "short_name": "Gate Pass",
+  "description": "Visitor approvals and resident KYC for Banke Bihari Dham, Dayalbagh, Agra",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FBEDEC",
+  "theme_color": "#E39B9B",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

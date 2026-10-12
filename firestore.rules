@@ -1,0 +1,83 @@
+rules_version = '2';
+
+// Roles
+//   Super Admin : Google account listed in isAdmin() (keep in sync with public/firebase-config.js)
+//   guard       : users/{uid}.role == 'guard', set by the Super Admin
+//   resident    : everyone else; receives visitor alerts only after KYC is approved
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in ['replace_with_admin_email'];
+    }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isGuard() { return hasProfile() && profile().role == 'guard'; }
+    function isVerifiedResidentOf(phase, house) {
+      return hasProfile() && profile().role == 'resident' && profile().kycStatus == 'approved'
+        && profile().phase == phase && profile().house == house;
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function validMobile(m) { return m is string && m.matches('^[6-9][0-9]{9}$'); }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'resident'
+        && request.resource.data.kycStatus == 'none'
+        && request.resource.data.requestedRole in ['', 'guard']
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2
+        && validMobile(request.resource.data.phone)
+        && (request.resource.data.requestedRole == 'guard'
+            || (request.resource.data.residentType in ['Owner', 'Tenant']
+                && request.resource.data.phase in [1, 2]
+                && request.resource.data.house is int
+                && request.resource.data.house >= 1 && request.resource.data.house <= 40));
+
+      // Residents edit their own profile and documents until verified, and may only move
+      // their KYC to 'pending'. Once verified, only name and phone can change.
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && !changed().hasAny(['role', 'requestedRole', 'kycNote', 'reviewedBy', 'reviewedAt', 'uid', 'email'])
+        && (
+          (resource.data.kycStatus == 'approved'
+            && changed().hasOnly(['name', 'phone', 'updatedAt']))
+          ||
+          (resource.data.kycStatus != 'approved'
+            && (request.resource.data.kycStatus == resource.data.kycStatus
+                || request.resource.data.kycStatus == 'pending'))
+        ));
+
+      allow delete: if isAdmin();
+    }
+
+    match /visits/{visitId} {
+      allow read: if isAdmin() || isGuard()
+        || isVerifiedResidentOf(resource.data.phase, resource.data.house);
+
+      allow create: if (isGuard() || isAdmin())
+        && request.resource.data.status == 'pending'
+        && request.resource.data.guardUid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2
+        && validMobile(request.resource.data.mobile)
+        && request.resource.data.photoPath is string && request.resource.data.photoPath.size() > 0
+        && request.resource.data.phase in [1, 2]
+        && request.resource.data.house is int
+        && request.resource.data.house >= 1 && request.resource.data.house <= 40
+        && request.resource.data.occupancy in ['Owner', 'Tenant', 'Vacant'];
+
+      // The verified resident of that house answers once; the Super Admin can answer any visit.
+      allow update: if isAdmin() || (
+        isVerifiedResidentOf(resource.data.phase, resource.data.house)
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'denied']
+        && request.resource.data.decidedBy == request.auth.uid
+        && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt']));
+
+      allow delete: if isAdmin();
+    }
+  }
+}

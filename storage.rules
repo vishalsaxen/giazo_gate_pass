@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in ['replace_with_admin_email'];
+    }
+    function profile() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data; }
+    function isGuard() { return signedIn() && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && profile().role == 'guard'; }
+
+    // Visitor photos: guards upload, any signed-in member of the society app can view.
+    match /visitors/{file} {
+      allow read: if signedIn();
+      allow create: if (isGuard() || isAdmin())
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
+    // KYC documents: only the resident who uploaded them and the Super Admin can see them.
+    match /kyc/{uid}/{file} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if isAdmin();
+    }
+  }
+}
