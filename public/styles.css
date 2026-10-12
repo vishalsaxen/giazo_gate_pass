@@ -138,3 +138,16 @@ button:focus-visible,a:focus-visible,.photo:focus-within{outline:2px solid var(-
 .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
 code{font-family:var(--mono);font-size:12px;background:var(--rose-soft);padding:2px 6px;border-radius:6px}
 @media (prefers-reduced-motion:reduce){.ring::before,.ring::after,.ring svg,.spinner{animation:none}}
+
+/* Security guard screens use a teal palette so they are never confused with resident screens */
+body.guard-theme{--wash:#EAF3F2;--rose:#3F8E8C;--rose-deep:#2B6A68;--rose-soft:#E1EFEE;--rose-tint:#CFE5E3}
+@media (prefers-color-scheme:dark){body.guard-theme{--wash:#141D1D;--rose:#5FB0AD;--rose-deep:#8ED0CD;--rose-soft:#203030;--rose-tint:#1A2727}}
+
+.portal{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.portal button{border:2px solid transparent;border-radius:20px;padding:14px 10px;font:700 15px var(--f);cursor:pointer;display:flex;flex-direction:column;gap:2px;align-items:center;text-align:center}
+.portal button small{font-size:11px;font-weight:500;opacity:.85}
+.portal .p-res{background:#FBEDEC;color:#C9706F}
+.portal .p-grd{background:#E1EFEE;color:#2B6A68}
+.portal .p-res[aria-selected="true"]{background:#E39B9B;color:#fff;border-color:#C9706F}
+.portal .p-grd[aria-selected="true"]{background:#3F8E8C;color:#fff;border-color:#2B6A68}
+input[type="date"].input{min-height:46px}

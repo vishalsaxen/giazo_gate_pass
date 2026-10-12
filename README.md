@@ -5,7 +5,9 @@ Visitor approvals and resident KYC for **Banke Bihari Dham, Dayalbagh, Agra** (H
 - **Security guard** takes the visitor's photo, enters name and mobile, picks the house and marks it Owner, Tenant or Vacant. All fields are required.
 - **Owner / Tenant** gets a buzzer on their phone and approves or denies the visitor. Vacant houses go to the Super Admin.
 - **Owner / Tenant KYC**: every resident uploads all required documents. Owners: Aadhaar, PAN, Sale Deed, Electricity Bill. Tenants: Aadhaar, Rent Agreement, Police Verification, Owner NOC.
-- **Super Admin** verifies KYC, approves guard accounts and sees the full gate log.
+- **Guard shift check-in**: Morning or Evening guards take a selfie when they start; the date and time come from their phone. The visitor form opens only after check-in.
+- **Super Admin** verifies KYC, approves guard accounts, deletes any user (before or after KYC), sees the gate log and guard attendance, and downloads visitor entries and guard attendance as Excel or PDF for any date range.
+- The login page has separate **Resident** (rose) and **Security Guard** (teal) tabs, and guard screens stay teal.
 
 Live app: https://vishalsaxen.github.io/giazo_gate_pass/
 
@@ -42,6 +44,7 @@ Residents tap **Turn on buzzer** once per visit to the app. While the app is ope
 | Collection | What it holds |
 | --- | --- |
 | `users/{uid}` | name, phone, role (`resident` or `guard`), Owner/Tenant, phase, house, `kycStatus` (`none`, `pending`, `approved`, `rejected`), uploaded document paths |
+| `attendance/{id}` | guard, shift (Morning/Evening), selfie path, date, date and time from the guard's phone, server time |
 | `visits/{id}` | visitor name, mobile, photo path, phase, house, Owner/Tenant/Vacant, status (`pending`, `approved`, `denied`), guard, who decided and when |
 
-Files live in Storage under `visitors/` and `kyc/{uid}/`. KYC files are readable only by their owner and the Super Admin.
+Files live in Storage under `visitors/`, `attendance/{uid}/` and `kyc/{uid}/`. Deleting a user removes their profile and KYC files; their sign-in account stays in Firebase Authentication until you delete it there too. Excel and PDF export libraries (SheetJS 0.18.5, jsPDF 2.5.1, jsPDF-AutoTable 3.8.2) are bundled in `public/vendor/`. KYC files are readable only by their owner and the Super Admin.

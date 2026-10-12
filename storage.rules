@@ -20,6 +20,15 @@ service firebase.storage {
       allow delete: if isAdmin();
     }
 
+    // Guard check-in selfies: the guard who took it and the Super Admin can see it.
+    match /attendance/{uid}/{file} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if isGuard() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
     // KYC documents: only the resident who uploaded them and the Super Admin can see them.
     match /kyc/{uid}/{file} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());

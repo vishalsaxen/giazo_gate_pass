@@ -54,6 +54,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Guard shift check-ins: one selfie per shift, time taken from the guard's phone.
+    match /attendance/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.guardUid == request.auth.uid);
+      allow create: if isGuard()
+        && request.resource.data.guardUid == request.auth.uid
+        && request.resource.data.shift in ['Morning', 'Evening']
+        && request.resource.data.selfiePath is string && request.resource.data.selfiePath.size() > 0
+        && request.resource.data.date is string
+        && request.resource.data.deviceTime is string
+        && request.resource.data.deviceMillis is int;
+      allow delete: if isAdmin();
+    }
+
     match /visits/{visitId} {
       allow read: if isAdmin() || isGuard()
         || isVerifiedResidentOf(resource.data.phase, resource.data.house);

@@ -4,10 +4,10 @@ import {
   signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, limit,
+  getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit,
   onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
 
 // ---------- constants ----------
@@ -43,6 +43,14 @@ const fmtTime = (ts) => new Date(ms(ts)).toLocaleString("en-IN", { day: "numeric
 const addrLine = (phase, house) => `House No. ${house}, Phase ${phase}`;
 const validMobile = (m) => /^[6-9]\d{9}$/.test(String(m).replace(/\D/g, ""));
 const cleanMobile = (m) => String(m).replace(/\D/g, "").slice(-10);
+const pad = (n) => String(n).padStart(2, "0");
+const dateKey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmtClock = (d = new Date()) => d.toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+const store = {
+  get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} }
+};
+function setTheme(role) { document.body.classList.toggle("guard-theme", role === "guard"); }
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -51,6 +59,7 @@ function toast(msg) {
 }
 function pressGroup(group, btn) { $$("button", group).forEach((b) => b.setAttribute("aria-pressed", String(b === btn))); }
 const icons = {
+  selfie: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 5-6 8-6s7 2 8 6"/></svg>',
   camera: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   bell: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 0 1-6 0"/></svg>',
   doc: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>',
@@ -80,6 +89,7 @@ const isAdminUser = (u) => !!u && u.emailVerified && ADMIN_EMAILS.map((e) => e.t
 
 onAuthStateChanged(auth, async (user) => {
   resetListeners();
+  setTheme("");
   if (!user) return renderLogin();
   if (isAdminUser(user)) return renderAdmin(user);
   try {
@@ -104,6 +114,7 @@ function watchProfile(user) {
     cleanups.filter((f) => f !== off).forEach((f) => f());
     cleanups = [off];
     stopBuzzer();
+    setTheme(p.role === "guard" || p.requestedRole === "guard" ? "guard" : "");
     if (p.role === "guard") renderGuard(user, p);
     else if (p.requestedRole === "guard") renderWaitingGuard(user, p);
     else renderResident(user, p);
@@ -124,9 +135,15 @@ function bindLogout() { const b = $("#logout"); if (b) b.onclick = () => signOut
 
 // ---------- login ----------
 function renderLogin() {
+  let portal = store.get("portal") === "guard" ? "guard" : "resident";
   app.innerHTML = `
     <div class="brand"><img src="icon.svg" alt=""><h1>GiaZo Gate Pass</h1><p class="muted">${SOCIETY}</p></div>
+    <div class="portal" role="tablist" aria-label="Who is signing in">
+      <button role="tab" class="p-res" data-portal="resident">Resident<small>Owner or Tenant sign up</small></button>
+      <button role="tab" class="p-grd" data-portal="guard">Security Guard<small>Guard login</small></button>
+    </div>
     <div class="card">
+      <h3 id="portalTitle"></h3>
       <button class="btn primary" id="google">Continue with Google</button>
       <div class="divider">or use email</div>
       <form id="emailForm" class="stack" novalidate>
@@ -139,7 +156,17 @@ function renderLogin() {
         </div>
       </form>
     </div>
-    <p class="small muted" style="text-align:center">Residents sign up here, then upload KYC documents for the Super Admin to verify.</p>`;
+    <p class="small muted" style="text-align:center" id="portalHint"></p>`;
+  const showPortal = () => {
+    store.set("portal", portal); setTheme(portal);
+    $$(".portal button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.portal === portal)));
+    $("#portalTitle").textContent = portal === "guard" ? "Security Guard login" : "Resident sign in or sign up";
+    $("#portalHint").textContent = portal === "guard"
+      ? "New guards sign up here too. The Super Admin approves guard access before the gate screen opens."
+      : "Residents sign up here, then upload KYC documents for the Super Admin to verify.";
+  };
+  $(".portal").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; portal = b.dataset.portal; showPortal(); };
+  showPortal();
   let creating = false;
   $("#google").onclick = async () => {
     try { await signInWithPopup(auth, new GoogleAuthProvider()); }
@@ -193,14 +220,16 @@ function phaseSeg(id) {
 }
 
 function renderOnboarding(user) {
+  const who = store.get("portal") === "guard" ? "guard" : "resident";
+  setTheme(who);
   app.innerHTML = `
     ${appbar("Welcome", user.email || "", user)}
     <div class="card">
-      <h3>Tell us who you are</h3>
-      <div class="opts" id="who"><button type="button" aria-pressed="true" data-v="resident">Resident</button><button type="button" aria-pressed="false" data-v="guard">Security guard</button></div>
+      <h3>${who === "guard" ? "Security guard sign-up" : "Resident sign-up"}</h3>
+      <p class="small muted">${who === "guard" ? "Signing up as a resident? Sign out and choose Resident." : "Signing up as a security guard? Sign out and choose Security Guard."}</p>
       <div><label class="l" for="nm">Full name <em>*</em></label><input class="input" id="nm" autocomplete="name" value="${esc(user.displayName || "")}"></div>
       <div><label class="l" for="ph">Mobile number <em>*</em></label><div class="mobile"><input class="input cc" value="+91" disabled aria-label="Country code"><input class="input" id="ph" inputmode="numeric" autocomplete="tel-national" maxlength="11" placeholder="10 digits"></div></div>
-      <div id="resFields" class="stack">
+      <div id="resFields" class="stack" ${who === "guard" ? "hidden" : ""}>
         <div><label class="l">I am the <em>*</em></label><div class="opts" id="rtype"><button type="button" aria-pressed="false" data-v="Owner">Owner</button><button type="button" aria-pressed="false" data-v="Tenant">Tenant</button></div></div>
         <div><label class="l">My house <em>*</em></label>${phaseSeg("phase")}</div>
         ${houseGrid("houses")}
@@ -209,9 +238,8 @@ function renderOnboarding(user) {
       <button class="btn primary" id="save">Continue</button>
     </div>`;
   bindLogout();
-  let who = "resident", rtype = "", phase = 0, house = 0;
+  let rtype = "", phase = 0, house = 0;
   const showAddr = () => { $("#addr").innerHTML = phase && house ? `<b>${addrLine(phase, house)}</b><br>${SOCIETY}` : "Pick your phase and house number."; };
-  $("#who").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; who = b.dataset.v; pressGroup($("#who"), b); $("#resFields").hidden = who !== "resident"; };
   $("#rtype").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; rtype = b.dataset.v; pressGroup($("#rtype"), b); };
   $("#phase").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; phase = +b.dataset.p; pressGroup($("#phase"), b); showAddr(); };
   $("#houses").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; house = +b.dataset.h; pressGroup($("#houses"), b); showAddr(); };
@@ -240,9 +268,78 @@ function renderWaitingGuard(user, p) {
 }
 
 // ---------- guard ----------
+function setupCheckin(user, p) {
+  let shift = "", selfie = null, done = [];
+  const clock = () => { const c = $("#clock"); if (c) c.textContent = fmtClock(); };
+  clock(); const ct = setInterval(clock, 1000); cleanups.push(() => clearInterval(ct));
+  $("#shift").onclick = (e) => { const b = e.target.closest("button"); if (!b || b.disabled) return; shift = b.dataset.v; pressGroup($("#shift"), b); };
+  $("#selfie").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      selfie = await compressImage(f, 800, 0.75);
+      let img = $("#selfieBox img");
+      if (!img) { img = document.createElement("img"); img.alt = "Your selfie"; $("#selfieBox").appendChild(img); }
+      img.src = URL.createObjectURL(selfie);
+    } catch { toast("Could not read that photo. Try again."); }
+  };
+  $("#moreShift").onclick = () => { $("#shiftForm").hidden = false; $("#moreShift").hidden = true; };
+  $("#checkin").onclick = async () => {
+    if (!shift) return toast("Choose Morning or Evening shift.");
+    if (!selfie) return toast("Take your selfie to check in.");
+    if (done.some((d) => d.shift === shift)) return toast(`You already checked in for the ${shift} shift today.`);
+    const btn = $("#checkin"); btn.disabled = true;
+    const now = new Date();
+    try {
+      const aref = doc(collection(db, "attendance"));
+      const path = `attendance/${user.uid}/${aref.id}.jpg`;
+      await uploadBytes(ref(storage, path), selfie, { contentType: "image/jpeg" });
+      await setDoc(aref, {
+        guardUid: user.uid, guardName: p.name, guardPhone: p.phone || "", shift, selfiePath: path,
+        date: dateKey(now), deviceTime: fmtClock(now), deviceMillis: now.getTime(), createdAt: serverTimestamp()
+      });
+      toast(`Checked in for the ${shift} shift.`);
+      shift = ""; selfie = null; $("#selfie").value = ""; $("#selfieBox img")?.remove();
+      $$("#shift button").forEach((b) => b.setAttribute("aria-pressed", "false"));
+    } catch (e) { console.error(e); toast("Check-in failed. Check the connection and try again."); }
+    btn.disabled = false;
+  };
+  const q = query(collection(db, "attendance"), where("guardUid", "==", user.uid), where("date", "==", dateKey()));
+  cleanups.push(onSnapshot(q, (s) => {
+    done = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.deviceMillis - b.deviceMillis);
+    $("#shiftDone").innerHTML = done.map((d) => `<div class="item" style="background:var(--rose-soft)"><div class="vphoto sm" data-photo="${esc(d.selfiePath)}">${esc(initials(p.name))}</div>
+      <div class="t"><b>${esc(d.shift)} shift</b><small>${esc(d.deviceTime)}</small></div><span class="pill ok">Checked in</span></div>`).join("");
+    hydratePhotos($("#shiftDone"));
+    $$("#shift button").forEach((b) => { b.disabled = done.some((d) => d.shift === b.dataset.v); });
+    const left = ["Morning", "Evening"].filter((x) => !done.some((d) => d.shift === x));
+    $("#shiftForm").hidden = done.length > 0;
+    $("#moreShift").hidden = !(done.length && left.length);
+    $("#moreShift").textContent = left.length ? `Check in for the ${left[0]} shift` : "";
+    $("#shiftPill").className = "pill " + (done.length ? "ok" : "rose");
+    $("#shiftPill").textContent = done.length ? "On duty" : "Not checked in";
+    $("#gateArea").hidden = !done.length;
+  }, (e) => { console.error(e); toast("Could not load today's check-in."); }));
+}
+
 function renderGuard(user, p) {
   app.innerHTML = `
-    ${appbar("New Visitor", "Main Gate · " + p.name, user)}
+    ${appbar("Main Gate", "Security · " + p.name, user)}
+    <div class="card" id="shiftCard">
+      <div class="row" style="justify-content:space-between"><h3>Shift check-in</h3><span class="pill rose" id="shiftPill">Not checked in</span></div>
+      <div class="list" id="shiftDone"></div>
+      <button type="button" class="link" id="moreShift" hidden></button>
+      <div id="shiftForm" class="stack">
+        <div><label class="l">Shift <em>*</em></label>
+          <div class="opts" id="shift"><button type="button" aria-pressed="false" data-v="Morning">Morning</button><button type="button" aria-pressed="false" data-v="Evening">Evening</button></div></div>
+        <label class="photo" id="selfieBox" style="height:150px">
+          <div class="shot">${icons.selfie}</div><span>Take your selfie *</span>
+          <input id="selfie" type="file" accept="image/*" capture="user">
+        </label>
+        <div class="addr"><span class="small muted">Date and time from this phone</span><br><b id="clock"></b></div>
+        <button class="btn primary" id="checkin" type="button">Check in</button>
+      </div>
+    </div>
+    <div id="gateArea" class="stack" hidden>
+    <h2>New Visitor</h2>
     <form id="vf" class="stack" novalidate>
       <label class="photo" id="photoBox">
         <div class="shot">${icons.camera}</div><span id="photoTxt">Take visitor photo *</span>
@@ -264,8 +361,10 @@ function renderGuard(user, p) {
       <button class="btn primary" id="send" type="submit">${icons.bell.replace(/36/g, "20")} Submit &amp; ring resident</button>
     </form>
     <h3>Today at the gate</h3>
-    <div class="list" id="log"><div class="empty">No visitors yet.</div></div>`;
+    <div class="list" id="log"><div class="empty">No visitors yet.</div></div>
+    </div>`;
   bindLogout();
+  setupCheckin(user, p);
 
   let phase = 0, house = 0, occ = "", photoBlob = null;
   const showAddr = () => { $("#addr").innerHTML = phase && house ? `<b>${addrLine(phase, house)}</b><br>${SOCIETY}` : "Pick the phase and house number."; };
@@ -491,21 +590,31 @@ function renderAdmin(user) {
       <button role="tab" aria-selected="true" data-tab="kyc">KYC requests</button>
       <button role="tab" aria-selected="false" data-tab="people">People</button>
       <button role="tab" aria-selected="false" data-tab="gate">Gate log</button>
+      <button role="tab" aria-selected="false" data-tab="attendance">Guard attendance</button>
+      <button role="tab" aria-selected="false" data-tab="reports">Reports</button>
     </div>
     <div id="pane" class="list"></div>`;
   bindLogout();
-  let tab = "kyc", users = [], visits = [];
+  let tab = "kyc", users = [], visits = [], attendance = [];
   $(".tabs").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; tab = b.dataset.tab; $$(".tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); draw(); };
 
   cleanups.push(onSnapshot(collection(db, "users"), (s) => { users = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => { console.error(e); toast("Admin access denied. Check ADMIN_EMAILS and the security rules."); }));
   cleanups.push(onSnapshot(query(collection(db, "visits"), orderBy("createdAt", "desc"), limit(100)), (s) => { visits = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
+  cleanups.push(onSnapshot(query(collection(db, "attendance"), orderBy("createdAt", "desc"), limit(100)), (s) => { attendance = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
 
   function draw() {
     $("#sPend").textContent = users.filter((u) => u.kycStatus === "pending").length;
     $("#sOk").textContent = users.filter((u) => u.kycStatus === "approved").length;
     $("#sGate").textContent = visits.filter((v) => v.status === "pending").length;
     const pane = $("#pane");
-    if (tab === "kyc") {
+    if (tab === "reports") { if (pane.dataset.tab !== "reports") renderReports(pane); pane.dataset.tab = "reports"; return; }
+    pane.dataset.tab = tab;
+    if (tab === "attendance") {
+      pane.innerHTML = attendance.length ? attendance.map((a) => `<div class="item"><div class="vphoto sm" data-photo="${esc(a.selfiePath)}">${esc(initials(a.guardName))}</div>
+        <div class="t"><b>${esc(a.guardName)}</b><small>${esc(a.shift)} shift · ${esc(a.deviceTime)}</small></div><span class="pill ${a.shift === "Morning" ? "wait" : "rose"}">${esc(a.shift)}</span></div>`).join("")
+        : `<div class="empty">No guard check-ins yet.</div>`;
+      hydratePhotos(pane);
+    } else if (tab === "kyc") {
       const rows = users.filter((u) => u.kycStatus === "pending").sort((a, b) => ms(a.kycSubmittedAt) - ms(b.kycSubmittedAt));
       pane.innerHTML = rows.length ? rows.map(kycReq).join("") : `<div class="empty">No KYC requests waiting.</div>`;
     } else if (tab === "people") {
@@ -537,8 +646,9 @@ function personRow(u) {
     : u.requestedRole === "guard"
       ? `<button class="btn primary sm" data-role="${u.id}" data-r="guard">Approve guard</button>`
       : u.kycStatus === "approved" ? `<button class="btn ghost sm" data-kyc="${u.id}" data-s="none">Revoke KYC</button>` : "";
-  return `<div class="item"><div class="avatar">${esc(initials(u.name))}</div><div class="t"><b>${esc(u.name)}</b><small>${esc(where)} · +91 ${esc(u.phone)}</small></div>
-    ${u.role === "guard" ? `<span class="pill ok">Guard</span>` : u.requestedRole === "guard" ? `<span class="pill wait">Wants guard</span>` : `<span class="pill ${kyc[0]}">${kyc[1]}</span>`}${act}</div>`;
+  return `<div class="card" style="padding:12px;gap:10px"><div class="item" style="padding:0"><div class="avatar">${esc(initials(u.name))}</div><div class="t"><b>${esc(u.name)}</b><small>${esc(where)} · +91 ${esc(u.phone)}</small></div>
+    ${u.role === "guard" ? `<span class="pill ok">Guard</span>` : u.requestedRole === "guard" ? `<span class="pill wait">Wants guard</span>` : `<span class="pill ${kyc[0]}">${kyc[1]}</span>`}</div>
+    <div class="row wrap" style="justify-content:flex-end">${act}<button class="btn deny sm" data-del="${u.id}">Delete user</button></div></div>`;
 }
 function bindAdminActions(user, users) {
   $$("[data-open]").forEach((b) => (b.onclick = async () => {
@@ -559,10 +669,96 @@ function bindAdminActions(user, users) {
     try { await updateDoc(doc(db, "users", b.dataset.role), { role: b.dataset.r, requestedRole: "", updatedAt: serverTimestamp() }); toast(b.dataset.r === "guard" ? "Guard access approved." : "Guard access removed."); }
     catch (e) { console.error(e); toast("Could not save. Try again."); b.disabled = false; }
   }));
+  $$("[data-del]").forEach((b) => (b.onclick = async () => {
+    if (b.dataset.armed !== "1") {
+      b.dataset.armed = "1"; b.textContent = "Tap again to delete";
+      setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "Delete user"; } }, 4000);
+      return;
+    }
+    const u = users.find((x) => x.id === b.dataset.del); if (!u) return;
+    b.disabled = true; b.textContent = "Deleting…";
+    try {
+      await Promise.all(Object.values(u.docs || {}).map((d) => deleteObject(ref(storage, d.path)).catch(() => {})));
+      await deleteDoc(doc(db, "users", u.id));
+      toast(`${u.name} was deleted.`);
+    } catch (e) { console.error(e); toast("Could not delete. Try again."); b.disabled = false; b.textContent = "Delete user"; }
+  }));
   $$("[data-visit]").forEach((b) => (b.onclick = async () => {
     try { await updateDoc(doc(db, "visits", b.dataset.visit), { status: b.dataset.s, decidedBy: user.uid, decidedByName: "Super Admin", decidedAt: serverTimestamp() }); }
     catch (e) { console.error(e); toast("Could not save. Try again."); }
   }));
+}
+
+// ---------- reports ----------
+function renderReports(pane) {
+  const today = dateKey();
+  pane.innerHTML = `<div class="card">
+    <h3>Download records</h3>
+    <div class="row"><div style="flex:1"><label class="l" for="rFrom">From <em>*</em></label><input class="input" type="date" id="rFrom" value="${today}" max="${today}"></div>
+      <div style="flex:1"><label class="l" for="rTo">To <em>*</em></label><input class="input" type="date" id="rTo" value="${today}" max="${today}"></div></div>
+    <div class="row wrap"><button class="chip" type="button" data-range="0">Today</button><button class="chip" type="button" data-range="6">Last 7 days</button><button class="chip" type="button" data-range="29">Last 30 days</button></div>
+    <h3 style="margin-top:6px">Visitor entries</h3>
+    <div class="actions"><button class="btn ghost" data-exp="visits" data-fmt="xlsx">Excel</button><button class="btn ghost" data-exp="visits" data-fmt="pdf">PDF</button></div>
+    <h3>Guard attendance</h3>
+    <div class="actions"><button class="btn ghost" data-exp="attendance" data-fmt="xlsx">Excel</button><button class="btn ghost" data-exp="attendance" data-fmt="pdf">PDF</button></div>
+  </div>`;
+  $$("[data-range]", pane).forEach((b) => (b.onclick = () => {
+    const d = new Date(); d.setDate(d.getDate() - +b.dataset.range);
+    $("#rFrom").value = dateKey(d); $("#rTo").value = today;
+  }));
+  $$("[data-exp]", pane).forEach((b) => (b.onclick = async () => {
+    const from = $("#rFrom").value, to = $("#rTo").value;
+    if (!from || !to) return toast("Pick both dates.");
+    if (from > to) return toast("The From date must be on or before the To date.");
+    const label = b.textContent; b.disabled = true; b.textContent = "Preparing…";
+    try { await exportRecords(b.dataset.exp, b.dataset.fmt, from, to); }
+    catch (e) { console.error(e); toast("Could not create the file. Try again."); }
+    b.disabled = false; b.textContent = label;
+  }));
+}
+const loaded = {};
+function loadScript(src) {
+  return (loaded[src] ||= new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => { delete loaded[src]; rej(new Error("load " + src)); };
+    document.head.appendChild(s);
+  }));
+}
+async function exportRecords(kind, fmt, from, to) {
+  const start = new Date(from + "T00:00:00"), end = new Date(to + "T00:00:00"); end.setDate(end.getDate() + 1);
+  const snap = await getDocs(query(collection(db, kind), where("createdAt", ">=", start), where("createdAt", "<", end), orderBy("createdAt", "asc")));
+  const rows = snap.docs.map((d) => d.data());
+  if (!rows.length) return toast("No records in those dates.");
+  const dt = (r) => new Date(ms(r.createdAt));
+  const day = (r) => dt(r).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const time = (r) => dt(r).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  const statusText = { pending: "No answer", approved: "Approved", denied: "Denied" };
+  const head = kind === "visits"
+    ? ["Date", "Time", "Visitor", "Mobile", "House", "Phase", "House status", "Answer", "Answered by", "Guard"]
+    : ["Date", "Shift", "Guard", "Guard mobile", "Phone date & time", "Server time", "Selfie"];
+  const body = kind === "visits"
+    ? rows.map((r) => [day(r), time(r), r.name, "+91 " + r.mobile, r.house, r.phase, r.occupancy, statusText[r.status] || r.status, r.decidedByName || "", r.guardName || ""])
+    : rows.map((r) => [day(r), r.shift, r.guardName, r.guardPhone ? "+91 " + r.guardPhone : "", r.deviceTime, time(r), r.selfiePath ? "Yes" : "No"]);
+  const title = kind === "visits" ? "Visitor entries" : "Guard attendance";
+  const file = `GiaZo ${title} ${from}${from === to ? "" : " to " + to}`;
+  if (fmt === "xlsx") {
+    await loadScript("vendor/xlsx.full.min.js");
+    const ws = window.XLSX.utils.aoa_to_sheet([head, ...body]);
+    ws["!cols"] = head.map((h, i) => ({ wch: Math.max(h.length, ...body.map((r) => String(r[i] ?? "").length)) + 2 }));
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, title);
+    window.XLSX.writeFile(wb, file + ".xlsx");
+  } else {
+    await loadScript("vendor/jspdf.umd.min.js");
+    await loadScript("vendor/jspdf.plugin.autotable.min.js");
+    const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    pdf.setFontSize(16); pdf.text(`GiaZo Gate Pass · ${title}`, 40, 40);
+    pdf.setFontSize(10); pdf.setTextColor(120);
+    pdf.text(`${SOCIETY} · ${from === to ? from : from + " to " + to} · ${rows.length} records`, 40, 58);
+    pdf.autoTable({ head: [head], body, startY: 72, styles: { fontSize: 9, cellPadding: 5 },
+      headStyles: { fillColor: [227, 155, 155], textColor: 255 }, alternateRowStyles: { fillColor: [251, 237, 236] } });
+    pdf.save(file + ".pdf");
+  }
+  toast(`Downloaded ${rows.length} records.`);
 }
 
 // ---------- images ----------
