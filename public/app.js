@@ -173,9 +173,15 @@ function authMsg(e) {
     "auth/weak-password": "Use a password of at least 6 characters.",
     "auth/invalid-email": "That email address is not valid.",
     "auth/too-many-requests": "Too many attempts. Wait a minute and try again.",
-    "auth/unauthorized-domain": "This website is not yet allowed in Firebase Authentication settings."
+    "auth/unauthorized-domain": "This website is not yet allowed in Firebase Authentication settings.",
+    "auth/operation-not-allowed": "This sign-in method is turned off in Firebase Authentication > Sign-in method.",
+    "auth/configuration-not-found": "Firebase Authentication is not set up yet. Open Authentication in the Firebase console and click Get started.",
+    "auth/popup-blocked": "The browser blocked the sign-in window. Allow pop-ups for this site and try again.",
+    "auth/network-request-failed": "No internet connection. Check it and try again.",
+    "auth/user-disabled": "This account has been disabled."
   };
-  return m[e.code] || "Sign-in failed. Try again.";
+  console.error(e);
+  return m[e.code] || `Sign-in failed (${e.code || e.message}). Try again.`;
 }
 
 // ---------- onboarding ----------
