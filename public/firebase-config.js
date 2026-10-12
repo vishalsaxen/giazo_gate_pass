@@ -14,5 +14,5 @@ export const firebaseConfig = {
 // Google accounts that get the Super Admin screens.
 // Keep this list in sync with isAdmin() in firestore.rules and storage.rules.
 export const ADMIN_EMAILS = [
-  "REPLACE_WITH_ADMIN_EMAIL"
+  "vishalsaxen@gmail.com"
 ];

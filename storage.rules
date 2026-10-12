@@ -6,7 +6,7 @@ service firebase.storage {
     function signedIn() { return request.auth != null; }
     function isAdmin() {
       return signedIn() && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() in ['replace_with_admin_email'];
+        && request.auth.token.email.lower() in ['vishalsaxen@gmail.com'];
     }
     function profile() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data; }
     function isGuard() { return signedIn() && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && profile().role == 'guard'; }
