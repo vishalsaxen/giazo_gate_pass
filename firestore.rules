@@ -19,6 +19,7 @@ service cloud.firestore {
       return hasProfile() && profile().role == 'resident' && profile().kycStatus == 'approved'
         && profile().phase == phase && profile().house == house;
     }
+    function isVerified() { return hasProfile() && profile().role == 'resident' && profile().kycStatus == 'approved'; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
     function validMobile(m) { return m is string && m.matches('^[6-9][0-9]{9}$'); }
 
@@ -67,6 +68,49 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Emergency numbers and Core Leadership: everyone signed in. Payment details: verified residents only.
+    match /settings/society {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /settings/payments {
+      allow read: if isAdmin() || isVerified();
+      allow write: if isAdmin();
+    }
+
+    // Dues for all houses (house == 0) or for one house. Guards never see these.
+    match /dues/{id} {
+      allow read: if isAdmin() || (isVerified() && (resource.data.house == 0
+        || (resource.data.phase == profile().phase && resource.data.house == profile().house)));
+      allow write: if isAdmin();
+    }
+
+    // Payment receipts: the resident who paid and the Super Admin.
+    match /payments/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isVerified()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.phase == profile().phase
+        && request.resource.data.house == profile().house
+        && request.resource.data.utr is string && request.resource.data.utr.size() >= 6
+        && request.resource.data.receiptPath is string && request.resource.data.receiptPath.size() > 0;
+      allow update, delete: if isAdmin();
+    }
+
+    // Our Nest: verified residents and the Super Admin can see listings; verified owners post their own.
+    match /nest/{id} {
+      allow read: if isAdmin() || isVerified();
+      allow create: if isVerified() && profile().residentType == 'Owner'
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.title is string && request.resource.data.title.size() >= 2
+        && request.resource.data.category is string
+        && request.resource.data.description is string && request.resource.data.description.size() >= 10
+        && validMobile(request.resource.data.phone)
+        && request.resource.data.imagePath is string && request.resource.data.imagePath.size() > 0;
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+    }
+
     match /visits/{visitId} {
       allow read: if isAdmin() || isGuard()
         || isVerifiedResidentOf(resource.data.phase, resource.data.house);
@@ -88,7 +132,7 @@ service cloud.firestore {
         && resource.data.status == 'pending'
         && request.resource.data.status in ['approved', 'denied']
         && request.resource.data.decidedBy == request.auth.uid
-        && changed().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedAt']));
+        && changed().hasOnly(['status', 'decidedBy', 'decidedAt']));
 
       allow delete: if isAdmin();
     }

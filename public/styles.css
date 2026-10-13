@@ -151,3 +151,22 @@ body.guard-theme{--wash:#EAF3F2;--rose:#3F8E8C;--rose-deep:#2B6A68;--rose-soft:#
 .portal .p-res[aria-selected="true"]{background:#E39B9B;color:#fff;border-color:#C9706F}
 .portal .p-grd[aria-selected="true"]{background:#3F8E8C;color:#fff;border-color:#2B6A68}
 input[type="date"].input{min-height:46px}
+
+/* bottom navigation */
+.app.has-nav{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}
+.bottomnav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:520px;display:flex;justify-content:space-around;gap:4px;background:var(--card);border-radius:22px 22px 0 0;padding:8px 10px calc(env(safe-area-inset-bottom,0px) + 10px);box-shadow:0 -8px 24px -16px rgba(0,0,0,.35);z-index:5}
+.bottomnav button{flex:1;border:0;background:none;color:var(--muted);font:600 11px var(--f);display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:14px;cursor:pointer}
+.bottomnav button[aria-current="true"]{color:var(--rose-deep);background:var(--rose-soft)}
+
+/* contacts */
+.sos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sosbtn{display:flex;flex-direction:column;gap:2px;padding:14px;border-radius:18px;background:var(--bad-soft);color:var(--bad);text-decoration:none}
+.sosbtn b{font:700 24px var(--mono)}
+.sosbtn span{font-size:12px;font-weight:600}
+.sosbtn:first-child{grid-column:1 / -1;background:var(--bad);color:#fff}
+
+/* dues + Our Nest */
+.qr{width:180px;max-width:100%;align-self:center;border-radius:14px;background:#fff;padding:8px}
+textarea.input{resize:vertical;font-family:var(--f)}
+.nestcard{gap:10px}
+.nestimg{height:160px;border-radius:16px;background:var(--rose-soft) center/cover no-repeat}

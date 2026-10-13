@@ -32,6 +32,21 @@ const KYC_DOCS = {
   ]
 };
 
+const LEADERSHIP_ROLES = [
+  ["president", "President / Chairman"],
+  ["vicePresident", "Vice President / Vice Chairman"],
+  ["secretary", "Secretary / General Secretary"],
+  ["jointSecretary", "Joint Secretary"],
+  ["treasurer", "Treasurer"]
+];
+const EMERGENCY_DEFAULTS = [
+  ["national", "Emergency (all services)", "112"],
+  ["police", "Police", "100"],
+  ["fire", "Fire Brigade", "101"],
+  ["ambulance", "Ambulance", "108"]
+];
+const NEST_CATEGORIES = ["Salon", "Cloud Kitchen", "Tuition", "Grocery", "Tailoring", "Services", "Other"];
+
 // ---------- tiny helpers ----------
 const app = document.getElementById("app");
 const $ = (s, el = app) => el.querySelector(s);
@@ -50,7 +65,7 @@ const store = {
   get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} }
 };
-function setTheme(role) { document.body.classList.toggle("guard-theme", role === "guard"); }
+function setTheme(role) { document.body.classList.toggle("guard-theme", role === "guard"); app.classList.remove("has-nav"); }
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -59,6 +74,11 @@ function toast(msg) {
 }
 function pressGroup(group, btn) { $$("button", group).forEach((b) => b.setAttribute("aria-pressed", String(b === btn))); }
 const icons = {
+  home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></svg>',
+  rupee: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12M6 9h12M6 4c6 0 8 2 8 5s-3 5-8 5l8 6"/></svg>',
+  nest: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10h16l-1 10H5z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  phone: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>',
+  gate: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V8l8-5 8 5v13M9 21v-7h6v7"/></svg>',
   selfie: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 5-6 8-6s7 2 8 6"/></svg>',
   camera: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   bell: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 0 1-6 0"/></svg>',
@@ -365,6 +385,7 @@ function renderGuard(user, p) {
     </div>`;
   bindLogout();
   setupCheckin(user, p);
+  mountNav([{ key: "home", label: "Gate", icon: icons.gate }, { key: "contacts", label: "Contacts", icon: icons.phone, render: renderContacts }]);
 
   let phase = 0, house = 0, occ = "", photoBlob = null;
   const showAddr = () => { $("#addr").innerHTML = phase && house ? `<b>${addrLine(phase, house)}</b><br>${SOCIETY}` : "Pick the phase and house number."; };
@@ -456,6 +477,12 @@ function renderResident(user, p) {
     <div ${approved ? "" : "hidden"}><h3 style="margin-bottom:8px">Recent visitors</h3><div class="list" id="history"><div class="empty">No visitors yet.</div></div></div>`;
   bindLogout();
   refreshKyc(user, p);
+  mountNav(approved
+    ? [{ key: "home", label: "Home", icon: icons.home },
+       { key: "dues", label: "Dues", icon: icons.rupee, render: (el) => renderDues(el, user, p) },
+       { key: "nest", label: "Our Nest", icon: icons.nest, render: (el) => renderNest(el, user, p) },
+       { key: "contacts", label: "Contacts", icon: icons.phone, render: renderContacts }]
+    : [{ key: "home", label: "Home", icon: icons.home }, { key: "contacts", label: "Contacts", icon: icons.phone, render: renderContacts }]);
   if (!approved) return;
 
   const enabled = buzzerReady();
@@ -500,7 +527,7 @@ function alertCard(v) {
 }
 async function decide(user, p, id, status) {
   try {
-    await updateDoc(doc(db, "visits", id), { status, decidedBy: user.uid, decidedByName: p.name, decidedAt: serverTimestamp() });
+    await updateDoc(doc(db, "visits", id), { status, decidedBy: user.uid, decidedAt: serverTimestamp() });
     toast(status === "approved" ? "Approved. The gate can let them in." : "Denied. The gate will turn them away.");
   } catch (e) { console.error(e); toast("Could not save your answer. Try again."); }
 }
@@ -575,7 +602,7 @@ function startBuzzer() {
   const ring = () => { const t = audioCtx.currentTime; beep(t, 880); beep(t + 0.35, 660); beep(t + 0.7, 880); navigator.vibrate?.([300, 150, 300, 150, 300]); };
   ring(); ringTimer = setInterval(ring, 1800);
 }
-function stopBuzzer() { clearInterval(ringTimer); ringTimer = null; navigator.vibrate?.(0); }
+function stopBuzzer() { if (!ringTimer) return; clearInterval(ringTimer); ringTimer = null; navigator.vibrate?.(0); }
 function notify(v) {
   if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
   try { new Notification("Visitor at Main Gate", { body: `${v.name} for ${addrLine(v.phase, v.house)}. Open Gate Pass to approve.`, icon: "icon.svg", tag: v.id, requireInteraction: true }); } catch {}
@@ -591,23 +618,34 @@ function renderAdmin(user) {
       <button role="tab" aria-selected="false" data-tab="people">People</button>
       <button role="tab" aria-selected="false" data-tab="gate">Gate log</button>
       <button role="tab" aria-selected="false" data-tab="attendance">Guard attendance</button>
+      <button role="tab" aria-selected="false" data-tab="dues">Dues</button>
+      <button role="tab" aria-selected="false" data-tab="nest">Our Nest</button>
+      <button role="tab" aria-selected="false" data-tab="society">Society info</button>
       <button role="tab" aria-selected="false" data-tab="reports">Reports</button>
     </div>
     <div id="pane" class="list"></div>`;
   bindLogout();
-  let tab = "kyc", users = [], visits = [], attendance = [];
+  let tab = "kyc", users = [], visits = [], attendance = [], paneCleanups = [];
+  cleanups.push(() => paneCleanups.forEach((f) => f()));
   $(".tabs").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; tab = b.dataset.tab; $$(".tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); draw(); };
 
   cleanups.push(onSnapshot(collection(db, "users"), (s) => { users = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => { console.error(e); toast("Admin access denied. Check ADMIN_EMAILS and the security rules."); }));
   cleanups.push(onSnapshot(query(collection(db, "visits"), orderBy("createdAt", "desc"), limit(100)), (s) => { visits = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
   cleanups.push(onSnapshot(query(collection(db, "attendance"), orderBy("createdAt", "desc"), limit(100)), (s) => { attendance = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
 
+  const nameOf = (v) => v.decidedByName || users.find((u) => u.id === v.decidedBy)?.name || "Resident";
+  adminNames = (uid) => users.find((u) => u.id === uid)?.name || "";
   function draw() {
     $("#sPend").textContent = users.filter((u) => u.kycStatus === "pending").length;
     $("#sOk").textContent = users.filter((u) => u.kycStatus === "approved").length;
     $("#sGate").textContent = visits.filter((v) => v.status === "pending").length;
     const pane = $("#pane");
-    if (tab === "reports") { if (pane.dataset.tab !== "reports") renderReports(pane); pane.dataset.tab = "reports"; return; }
+    const own = { reports: renderReports, dues: renderAdminDues, nest: renderAdminNest, society: renderSocietyForm };
+    if (own[tab]) {
+      if (pane.dataset.tab !== tab) { paneCleanups.forEach((f) => f()); paneCleanups = []; pane.dataset.tab = tab; own[tab](pane, paneCleanups, users); }
+      return;
+    }
+    if (pane.dataset.tab !== tab) { paneCleanups.forEach((f) => f()); paneCleanups = []; }
     pane.dataset.tab = tab;
     if (tab === "attendance") {
       pane.innerHTML = attendance.length ? attendance.map((a) => `<div class="item"><div class="vphoto sm" data-photo="${esc(a.selfiePath)}">${esc(initials(a.guardName))}</div>
@@ -622,7 +660,7 @@ function renderAdmin(user) {
       pane.innerHTML = rows.length ? rows.map(personRow).join("") : `<div class="empty">Nobody has signed up yet.</div>`;
     } else {
       pane.innerHTML = visits.length ? visits.map((v) => `<div class="card" style="padding:12px;gap:8px">${visitRow(v).replace('class="item"', 'class="item" style="padding:0"')}
-        ${v.status === "pending" ? `<div class="actions"><button class="btn deny sm" style="width:100%" data-visit="${v.id}" data-s="denied">Deny</button><button class="btn approve sm" style="width:100%" data-visit="${v.id}" data-s="approved">Approve</button></div>` : v.decidedByName ? `<span class="small muted">${v.status === "approved" ? "Approved" : "Denied"} by ${esc(v.decidedByName)}</span>` : ""}</div>`).join("") : `<div class="empty">No visitors logged yet.</div>`;
+        ${v.status === "pending" ? `<div class="actions"><button class="btn deny sm" style="width:100%" data-visit="${v.id}" data-s="denied">Deny</button><button class="btn approve sm" style="width:100%" data-visit="${v.id}" data-s="approved">Approve</button></div>` : v.decidedBy ? `<span class="small muted">${v.status === "approved" ? "Approved" : "Denied"} by ${esc(nameOf(v))}</span>` : ""}</div>`).join("") : `<div class="empty">No visitors logged yet.</div>`;
       hydratePhotos(pane);
     }
     bindAdminActions(user, users);
@@ -716,6 +754,7 @@ function renderReports(pane) {
     b.disabled = false; b.textContent = label;
   }));
 }
+let adminNames = () => "";
 const loaded = {};
 function loadScript(src) {
   return (loaded[src] ||= new Promise((res, rej) => {
@@ -736,7 +775,7 @@ async function exportRecords(kind, fmt, from, to) {
     ? ["Date", "Time", "Visitor", "Mobile", "House", "Phase", "House status", "Answer", "Answered by", "Guard"]
     : ["Date", "Shift", "Guard", "Guard mobile", "Phone date & time", "Server time", "Selfie"];
   const body = kind === "visits"
-    ? rows.map((r) => [day(r), time(r), r.name, "+91 " + r.mobile, r.house, r.phase, r.occupancy, statusText[r.status] || r.status, r.decidedByName || "", r.guardName || ""])
+    ? rows.map((r) => [day(r), time(r), r.name, "+91 " + r.mobile, r.house, r.phase, r.occupancy, statusText[r.status] || r.status, r.decidedByName || adminNames(r.decidedBy) || "", r.guardName || ""])
     : rows.map((r) => [day(r), r.shift, r.guardName, r.guardPhone ? "+91 " + r.guardPhone : "", r.deviceTime, time(r), r.selfiePath ? "Yes" : "No"]);
   const title = kind === "visits" ? "Visitor entries" : "Guard attendance";
   const file = `GiaZo ${title} ${from}${from === to ? "" : " to " + to}`;
@@ -759,6 +798,312 @@ async function exportRecords(kind, fmt, from, to) {
     pdf.save(file + ".pdf");
   }
   toast(`Downloaded ${rows.length} records.`);
+}
+
+// ---------- bottom navigation ----------
+function mountNav(items) {
+  const bar = $(".appbar");
+  const home = document.createElement("section");
+  home.className = "stack"; home.dataset.sec = "home";
+  [...app.children].filter((c) => c !== bar).forEach((c) => home.appendChild(c));
+  app.appendChild(home);
+  const opened = new Set(["home"]);
+  items.filter((i) => i.key !== "home").forEach((i) => {
+    const sec = document.createElement("section");
+    sec.className = "stack"; sec.dataset.sec = i.key; sec.hidden = true;
+    app.appendChild(sec);
+  });
+  const nav = document.createElement("nav");
+  nav.className = "bottomnav";
+  nav.innerHTML = items.map((i) => `<button type="button" data-nav="${i.key}" aria-current="${i.key === "home"}">${i.icon}<span>${i.label}</span></button>`).join("");
+  app.appendChild(nav);
+  app.classList.add("has-nav");
+  nav.onclick = (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const key = b.dataset.nav, item = items.find((i) => i.key === key);
+    $$("[data-sec]").forEach((s) => (s.hidden = s.dataset.sec !== key));
+    $$("[data-nav]", nav).forEach((x) => x.setAttribute("aria-current", String(x === b)));
+    if (!opened.has(key) && item.render) { opened.add(key); item.render($(`[data-sec="${key}"]`)); }
+    window.scrollTo({ top: 0 });
+  };
+}
+
+// ---------- contacts: emergency + core leadership ----------
+const telLink = (n) => `tel:${String(n).replace(/[^\d+]/g, "")}`;
+function renderContacts(el) {
+  el.innerHTML = `<h2>Emergency</h2><div class="sos" id="sos"></div><h2>Core Leadership</h2><div class="list" id="leaders"><div class="empty">Loading…</div></div>`;
+  cleanups.push(onSnapshot(doc(db, "settings", "society"), (snap) => {
+    const s = snap.data() || {};
+    const em = s.emergency || {};
+    const list = EMERGENCY_DEFAULTS.map(([k, label, def]) => [label, em[k] || def]);
+    if (s.securityDesk?.phone) list.push([s.securityDesk.name || "Society security desk", s.securityDesk.phone]);
+    $("#sos", el).innerHTML = list.map(([label, num]) => `<a class="sosbtn" href="${telLink(num)}"><b>${esc(num)}</b><span>${esc(label)}</span></a>`).join("");
+    const lead = s.leadership || {};
+    const rows = LEADERSHIP_ROLES.filter(([k]) => lead[k]?.name);
+    $("#leaders", el).innerHTML = rows.length ? rows.map(([k, role]) => `<div class="item"><div class="avatar">${esc(initials(lead[k].name))}</div>
+        <div class="t"><b>${esc(lead[k].name)}</b><small>${esc(role)}</small></div>
+        <a class="btn sm ghost" href="${telLink("+91" + lead[k].phone)}">${icons.phone.replace(/22/g, "16")} +91 ${esc(lead[k].phone)}</a></div>`).join("")
+      : `<div class="empty">The Super Admin has not added the committee yet.</div>`;
+  }, (e) => { console.error(e); $("#leaders", el).innerHTML = `<div class="empty">Could not load contacts.</div>`; }));
+}
+
+function renderSocietyForm(pane, paneCleanups) {
+  pane.innerHTML = `<div class="empty">Loading…</div>`;
+  Promise.all([getDoc(doc(db, "settings", "society")), getDoc(doc(db, "settings", "payments"))]).then(([a, b]) => {
+    const s = a.data() || {}, pay = b.data() || {};
+    const em = s.emergency || {}, lead = s.leadership || {}, desk = s.securityDesk || {};
+    pane.innerHTML = `
+      <div class="card"><h3>Emergency numbers</h3><p class="small muted">Shown to residents and guards on the Contacts screen.</p>
+        ${EMERGENCY_DEFAULTS.map(([k, label, def]) => `<div><label class="l" for="em-${k}">${label} <em>*</em></label><input class="input" id="em-${k}" inputmode="tel" value="${esc(em[k] || def)}"></div>`).join("")}
+        <div class="row"><div style="flex:1"><label class="l" for="desk-n">Security desk name <em>*</em></label><input class="input" id="desk-n" value="${esc(desk.name || "Main Gate Security")}"></div>
+        <div style="flex:1"><label class="l" for="desk-p">Security desk mobile <em>*</em></label><input class="input" id="desk-p" inputmode="numeric" maxlength="11" value="${esc(desk.phone || "")}"></div></div>
+      </div>
+      <div class="card"><h3>Core Leadership</h3>
+        ${LEADERSHIP_ROLES.map(([k, role]) => `<div class="stack" style="gap:6px"><label class="l">${role} <em>*</em></label>
+          <div class="row"><input class="input" id="ld-${k}-n" placeholder="Name" value="${esc(lead[k]?.name || "")}"><input class="input" id="ld-${k}-p" placeholder="Mobile" inputmode="numeric" maxlength="11" value="${esc(lead[k]?.phone || "")}"></div></div>`).join("")}
+      </div>
+      <div class="card"><h3>Payment details for dues</h3><p class="small muted">Residents see these on the Dues screen.</p>
+        <div><label class="l" for="py-upi">UPI ID <em>*</em></label><input class="input" id="py-upi" placeholder="society@okaxis" value="${esc(pay.upiId || "")}"></div>
+        <div><label class="l" for="py-name">Account holder name <em>*</em></label><input class="input" id="py-name" value="${esc(pay.payeeName || "")}"></div>
+        <div><label class="l" for="py-bank">Bank name <em>*</em></label><input class="input" id="py-bank" value="${esc(pay.bank || "")}"></div>
+        <div class="row"><div style="flex:1"><label class="l" for="py-acc">Account number <em>*</em></label><input class="input" id="py-acc" inputmode="numeric" value="${esc(pay.account || "")}"></div>
+          <div style="flex:1"><label class="l" for="py-ifsc">IFSC <em>*</em></label><input class="input" id="py-ifsc" value="${esc(pay.ifsc || "")}" style="text-transform:uppercase"></div></div>
+        <label class="photo" id="qrBox" style="height:180px"><div class="shot">${icons.camera}</div><span>${pay.qrPath ? "Replace UPI QR code" : "Upload UPI QR code *"}</span><input id="py-qr" type="file" accept="image/*"></label>
+      </div>
+      <button class="btn primary" id="saveSociety">Save society info</button>`;
+    let qr = null;
+    if (pay.qrPath) photoUrl(pay.qrPath).then((u) => { if (u) $("#qrBox", pane).insertAdjacentHTML("beforeend", `<img src="${esc(u)}" alt="UPI QR code" style="object-fit:contain;background:#fff">`); });
+    $("#py-qr", pane).onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      qr = await compressImage(f, 1000, 0.9);
+      $("#qrBox img", pane)?.remove();
+      $("#qrBox", pane).insertAdjacentHTML("beforeend", `<img src="${URL.createObjectURL(qr)}" alt="UPI QR code" style="object-fit:contain;background:#fff">`);
+    };
+    $("#saveSociety", pane).onclick = async () => {
+      const v = (id) => $("#" + id, pane).value.trim();
+      const emergency = {};
+      for (const [k, label] of EMERGENCY_DEFAULTS) { if (!/^\d{3,12}$/.test(v("em-" + k))) return toast(`Enter a number for ${label}.`); emergency[k] = v("em-" + k); }
+      if (!v("desk-n")) return toast("Enter the security desk name.");
+      if (!validMobile(v("desk-p"))) return toast("Enter a valid 10-digit security desk mobile.");
+      const leadership = {};
+      for (const [k, role] of LEADERSHIP_ROLES) {
+        if (v(`ld-${k}-n`).length < 2) return toast(`Enter the ${role} name.`);
+        if (!validMobile(v(`ld-${k}-p`))) return toast(`Enter a valid 10-digit mobile for ${role}.`);
+        leadership[k] = { name: v(`ld-${k}-n`), phone: cleanMobile(v(`ld-${k}-p`)) };
+      }
+      if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(v("py-upi"))) return toast("Enter a valid UPI ID, like society@okaxis.");
+      if (!v("py-name") || !v("py-bank")) return toast("Enter the account holder and bank name.");
+      if (!/^\d{6,18}$/.test(v("py-acc"))) return toast("Enter a valid account number.");
+      if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(v("py-ifsc").toUpperCase())) return toast("Enter a valid 11-character IFSC.");
+      if (!qr && !pay.qrPath) return toast("Upload the UPI QR code.");
+      const btn = $("#saveSociety", pane); btn.disabled = true;
+      try {
+        let qrPath = pay.qrPath || "";
+        if (qr) { qrPath = `settings/upi-qr-${Date.now()}.jpg`; await uploadBytes(ref(storage, qrPath), qr, { contentType: "image/jpeg" }); }
+        await setDoc(doc(db, "settings", "society"), { emergency, securityDesk: { name: v("desk-n"), phone: cleanMobile(v("desk-p")) }, leadership, updatedAt: serverTimestamp() });
+        await setDoc(doc(db, "settings", "payments"), { upiId: v("py-upi"), payeeName: v("py-name"), bank: v("py-bank"), account: v("py-acc"), ifsc: v("py-ifsc").toUpperCase(), qrPath, updatedAt: serverTimestamp() });
+        pay.qrPath = qrPath; qr = null;
+        toast("Society info saved.");
+      } catch (e) { console.error(e); toast("Could not save. Try again."); }
+      btn.disabled = false;
+    };
+  }).catch((e) => { console.error(e); pane.innerHTML = `<div class="empty">Could not load society info.</div>`; });
+}
+
+// ---------- dues ----------
+const rupees = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+const fmtDay = (k) => (k ? new Date(k + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+const payPill = (st) => ({ confirmed: `<span class="pill ok">Paid</span>`, submitted: `<span class="pill wait">Checking</span>`, rejected: `<span class="pill no">Rejected</span>` }[st] || `<span class="pill rose">Unpaid</span>`);
+
+function renderDues(el, user, p) {
+  el.innerHTML = `<h2>Dues</h2><div class="card" id="payInfo"><div class="empty">Loading payment details…</div></div><div class="list" id="dueList"><div class="empty">Loading dues…</div></div>`;
+  let pay = {}, dues = { all: [], mine: [] }, payments = [];
+  getDoc(doc(db, "settings", "payments")).then(async (snap) => {
+    pay = snap.data() || {};
+    if (!pay.upiId) { $("#payInfo", el).innerHTML = `<p class="muted">The Super Admin has not added payment details yet.</p>`; return; }
+    const qr = await photoUrl(pay.qrPath);
+    $("#payInfo", el).innerHTML = `<h3>Pay the society</h3>
+      ${qr ? `<img src="${esc(qr)}" alt="UPI QR code" class="qr">` : ""}
+      <dl class="kv"><dt>UPI ID</dt><dd><button class="link" id="copyUpi">${esc(pay.upiId)}</button></dd><dt>Name</dt><dd>${esc(pay.payeeName)}</dd>
+        <dt>Bank</dt><dd>${esc(pay.bank)}</dd><dt>Account</dt><dd>${esc(pay.account)}</dd><dt>IFSC</dt><dd>${esc(pay.ifsc)}</dd></dl>
+      <p class="small muted">After paying, tap "I have paid" on the due and upload the receipt.</p>`;
+    $("#copyUpi", el).onclick = async () => { try { await navigator.clipboard.writeText(pay.upiId); toast("UPI ID copied."); } catch { toast(pay.upiId); } };
+    draw();
+  }).catch((e) => console.error(e));
+  const qAll = query(collection(db, "dues"), where("house", "==", 0));
+  const qMine = query(collection(db, "dues"), where("phase", "==", p.phase), where("house", "==", p.house));
+  const qPay = query(collection(db, "payments"), where("uid", "==", user.uid));
+  cleanups.push(onSnapshot(qAll, (s) => { dues.all = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
+  cleanups.push(onSnapshot(qMine, (s) => { dues.mine = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
+  cleanups.push(onSnapshot(qPay, (s) => { payments = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => ms(b.createdAt) - ms(a.createdAt)); draw(); }, (e) => console.error(e)));
+  function draw() {
+    const list = [...new Map([...dues.all, ...dues.mine].map((d) => [d.id, d])).values()].sort((a, b) => String(b.dueDate).localeCompare(String(a.dueDate)));
+    const box = $("#dueList", el);
+    if (!list.length) { box.innerHTML = `<div class="empty">No dues right now.</div>`; return; }
+    box.innerHTML = list.map((d) => {
+      const last = payments.find((x) => x.dueId === d.id);
+      const st = last?.status;
+      const canPay = !st || st === "rejected";
+      const upi = pay.upiId ? `upi://pay?pa=${encodeURIComponent(pay.upiId)}&pn=${encodeURIComponent(pay.payeeName || "")}&am=${d.amount}&cu=INR&tn=${encodeURIComponent(d.title + " H" + p.house + " P" + p.phase)}` : "";
+      return `<div class="card" style="gap:10px">
+        <div class="row" style="justify-content:space-between"><div><h3>${esc(d.title)}</h3><span class="small muted">Due ${fmtDay(d.dueDate)}${d.house ? "" : " · All houses"}</span></div><div style="text-align:right"><b style="font-size:18px">${rupees(d.amount)}</b><br>${payPill(st)}</div></div>
+        ${st === "rejected" && last.note ? `<div class="banner no">Receipt not accepted: ${esc(last.note)}</div>` : ""}
+        ${canPay ? `<div class="actions">${upi ? `<a class="btn ghost sm" style="width:100%" href="${esc(upi)}">Pay by UPI app</a>` : "<span></span>"}<button class="btn primary sm" style="width:100%" data-paid="${d.id}">I have paid</button></div>
+          <div class="stack" id="pf-${d.id}" hidden>
+            <div><label class="l" for="utr-${d.id}">UPI / bank reference number <em>*</em></label><input class="input" id="utr-${d.id}" placeholder="12-digit UTR"></div>
+            <label class="btn ghost upl" id="rl-${d.id}">Upload payment receipt *<input type="file" accept="image/*,application/pdf" data-receipt="${d.id}"></label>
+            <button class="btn primary" data-submit="${d.id}">Send receipt</button></div>` : ""}
+      </div>`;
+    }).join("");
+    const files = {};
+    $$("[data-paid]", box).forEach((b) => (b.onclick = () => { $(`#pf-${b.dataset.paid}`, box).hidden = false; b.hidden = true; }));
+    $$("[data-receipt]", box).forEach((i) => (i.onchange = () => { const f = i.files[0]; if (!f) return; files[i.dataset.receipt] = f; $(`#rl-${i.dataset.receipt}`, box).firstChild.textContent = "Receipt: " + f.name + " "; }));
+    $$("[data-submit]", box).forEach((b) => (b.onclick = async () => {
+      const d = list.find((x) => x.id === b.dataset.submit);
+      const utr = $(`#utr-${d.id}`, box).value.trim();
+      let f = files[d.id];
+      if (utr.length < 6) return toast("Enter the payment reference number.");
+      if (!f) return toast("Upload the payment receipt.");
+      const isPdf = f.type === "application/pdf";
+      if (!isPdf && !f.type.startsWith("image/")) return toast("Use a PDF, JPG or PNG file.");
+      b.disabled = true; b.textContent = "Sending…";
+      try {
+        const blob = isPdf ? f : await compressImage(f, 1600, 0.85);
+        if (blob.size > MAX_FILE_BYTES) { toast("That file is over 5 MB. Use a smaller one."); b.disabled = false; b.textContent = "Send receipt"; return; }
+        const path = `receipts/${user.uid}/${d.id}-${Date.now()}.${isPdf ? "pdf" : "jpg"}`;
+        await uploadBytes(ref(storage, path), blob, { contentType: isPdf ? "application/pdf" : "image/jpeg" });
+        await setDoc(doc(collection(db, "payments")), { dueId: d.id, dueTitle: d.title, amount: d.amount, uid: user.uid, name: p.name, phase: p.phase, house: p.house, utr, receiptPath: path, status: "submitted", createdAt: serverTimestamp() });
+        toast("Receipt sent. The Super Admin will confirm it.");
+      } catch (e) { console.error(e); toast("Could not send. Try again."); b.disabled = false; b.textContent = "Send receipt"; }
+    }));
+  }
+}
+
+function renderAdminDues(pane, paneCleanups) {
+  pane.innerHTML = `
+    <div class="card"><h3>Add a due</h3>
+      <div><label class="l" for="d-title">What is it for <em>*</em></label><input class="input" id="d-title" placeholder="Maintenance October 2026"></div>
+      <div class="row"><div style="flex:1"><label class="l" for="d-amt">Amount (₹) <em>*</em></label><input class="input" id="d-amt" inputmode="numeric"></div>
+        <div style="flex:1"><label class="l" for="d-date">Due date <em>*</em></label><input class="input" id="d-date" type="date"></div></div>
+      <div><label class="l">Who pays <em>*</em></label><div class="opts" id="d-scope"><button type="button" aria-pressed="false" data-v="all">All houses</button><button type="button" aria-pressed="false" data-v="one">One house</button></div></div>
+      <div id="d-house" class="stack" hidden>${phaseSeg("d-phase")}${houseGrid("d-houses")}</div>
+      <button class="btn primary" id="d-add">Add due</button>
+    </div>
+    <h3>Receipts to check</h3><div class="list" id="d-wait"></div>
+    <h3>All dues</h3><div class="list" id="d-list"></div>`;
+  let scope = "", phase = 0, house = 0, dues = [], payments = [];
+  $("#d-scope", pane).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; scope = b.dataset.v; pressGroup($("#d-scope", pane), b); $("#d-house", pane).hidden = scope !== "one"; };
+  $("#d-phase", pane).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; phase = +b.dataset.p; pressGroup($("#d-phase", pane), b); };
+  $("#d-houses", pane).onclick = (e) => { const b = e.target.closest("button"); if (!b) return; house = +b.dataset.h; pressGroup($("#d-houses", pane), b); };
+  $("#d-add", pane).onclick = async () => {
+    const title = $("#d-title", pane).value.trim(), amount = parseInt($("#d-amt", pane).value.replace(/\D/g, ""), 10), dueDate = $("#d-date", pane).value;
+    if (title.length < 3) return toast("Enter what the due is for.");
+    if (!amount || amount < 1) return toast("Enter the amount in rupees.");
+    if (!dueDate) return toast("Pick the due date.");
+    if (!scope) return toast("Choose All houses or One house.");
+    if (scope === "one" && (!phase || !house)) return toast("Pick the phase and house.");
+    try {
+      await setDoc(doc(collection(db, "dues")), { title, amount, dueDate, phase: scope === "one" ? phase : 0, house: scope === "one" ? house : 0, createdAt: serverTimestamp() });
+      toast("Due added."); $("#d-title", pane).value = ""; $("#d-amt", pane).value = "";
+    } catch (e) { console.error(e); toast("Could not add. Try again."); }
+  };
+  paneCleanups.push(onSnapshot(query(collection(db, "dues"), orderBy("createdAt", "desc")), (s) => { dues = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
+  paneCleanups.push(onSnapshot(query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(500)), (s) => { payments = s.docs.map((d) => ({ id: d.id, ...d.data() })); draw(); }, (e) => console.error(e)));
+  function draw() {
+    const wait = payments.filter((x) => x.status === "submitted");
+    $("#d-wait", pane).innerHTML = wait.length ? wait.map((x) => `<div class="card" style="gap:8px">
+        <div class="row" style="justify-content:space-between"><div><b>${esc(x.name)}</b><div class="small muted">${esc(addrLine(x.phase, x.house))} · ${esc(x.dueTitle)}</div><div class="small muted">Ref ${esc(x.utr)} · ${fmtTime(x.createdAt)}</div></div><b>${rupees(x.amount)}</b></div>
+        <div class="row wrap"><button class="chip" data-open="${esc(x.receiptPath)}">View receipt</button></div>
+        <input class="input" id="pn-${x.id}" placeholder="Reason, if rejecting">
+        <div class="actions"><button class="btn deny sm" style="width:100%" data-pay="${x.id}" data-s="rejected">Reject</button><button class="btn approve sm" style="width:100%" data-pay="${x.id}" data-s="confirmed">Confirm paid</button></div></div>`).join("")
+      : `<div class="empty">No receipts waiting.</div>`;
+    $("#d-list", pane).innerHTML = dues.length ? dues.map((d) => {
+      const paid = payments.filter((x) => x.dueId === d.id && x.status === "confirmed").length;
+      return `<div class="item"><div class="t"><b>${esc(d.title)}</b><small>${rupees(d.amount)} · due ${fmtDay(d.dueDate)} · ${d.house ? esc(addrLine(d.phase, d.house)) : "All houses"}</small></div><span class="pill ${paid ? "ok" : "rose"}">${paid} paid</span><button class="btn deny sm" data-deldue="${d.id}">Delete</button></div>`;
+    }).join("") : `<div class="empty">No dues added yet.</div>`;
+    $$("[data-open]", pane).forEach((b) => (b.onclick = async () => { try { window.open(await getDownloadURL(ref(storage, b.dataset.open)), "_blank", "noopener"); } catch { toast("Could not open that file."); } }));
+    $$("[data-pay]", pane).forEach((b) => (b.onclick = async () => {
+      const note = ($(`#pn-${b.dataset.pay}`, pane)?.value || "").trim();
+      if (b.dataset.s === "rejected" && !note) return toast("Add a reason so the resident knows what to fix.");
+      try { await updateDoc(doc(db, "payments", b.dataset.pay), { status: b.dataset.s, note, reviewedAt: serverTimestamp() }); toast(b.dataset.s === "confirmed" ? "Marked as paid." : "Receipt rejected."); }
+      catch (e) { console.error(e); toast("Could not save. Try again."); }
+    }));
+    $$("[data-deldue]", pane).forEach((b) => (b.onclick = async () => {
+      if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again"; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "Delete"; } }, 4000); return; }
+      try { await deleteDoc(doc(db, "dues", b.dataset.deldue)); toast("Due deleted."); } catch (e) { console.error(e); toast("Could not delete. Try again."); }
+    }));
+  }
+}
+
+// ---------- Our Nest ----------
+function nestCard(n, canDelete) {
+  return `<div class="card nestcard"><div class="nestimg" data-photo="${esc(n.imagePath)}"></div>
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div><h3>${esc(n.title)}</h3><span class="small muted">${esc(n.ownerName)} · ${esc(addrLine(n.phase, n.house))}</span></div><span class="pill rose">${esc(n.category)}</span></div>
+    <p>${esc(n.description)}</p>
+    <div class="row wrap"><a class="btn sm primary" href="${telLink("+91" + n.phone)}">${icons.phone.replace(/22/g, "16")} +91 ${esc(n.phone)}</a>${canDelete ? `<button class="btn sm deny" data-delnest="${n.id}">Remove</button>` : ""}</div></div>`;
+}
+function bindNestDelete(root, imagePathOf) {
+  $$("[data-delnest]", root).forEach((b) => (b.onclick = async () => {
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again to remove"; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "Remove"; } }, 4000); return; }
+    try { const path = imagePathOf(b.dataset.delnest); await deleteDoc(doc(db, "nest", b.dataset.delnest)); if (path) deleteObject(ref(storage, path)).catch(() => {}); toast("Listing removed."); }
+    catch (e) { console.error(e); toast("Could not remove. Try again."); }
+  }));
+}
+function renderNest(el, user, p) {
+  const canPost = p.residentType === "Owner";
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2>Our Nest</h2>${canPost ? `<button class="btn sm primary" id="nAddBtn">Add your business</button>` : ""}</div>
+    <p class="small muted">Salons, cloud kitchens, tuition and more, run by owners in our society.</p>
+    <div class="card" id="nForm" hidden>
+      <div><label class="l" for="n-title">Business name <em>*</em></label><input class="input" id="n-title"></div>
+      <div><label class="l" for="n-cat">Category <em>*</em></label><select class="input" id="n-cat"><option value="">Choose one</option>${NEST_CATEGORIES.map((c) => `<option>${c}</option>`).join("")}</select></div>
+      <div><label class="l" for="n-desc">What you offer <em>*</em></label><textarea class="input" id="n-desc" rows="3" maxlength="400" placeholder="Timings, prices, home delivery…"></textarea></div>
+      <div><label class="l" for="n-phone">Contact mobile <em>*</em></label><div class="mobile"><input class="input cc" value="+91" disabled aria-label="Country code"><input class="input" id="n-phone" inputmode="numeric" maxlength="11" value="${esc(p.phone || "")}"></div></div>
+      <label class="photo" id="nImgBox" style="height:150px"><div class="shot">${icons.camera}</div><span>Add a photo *</span><input id="n-img" type="file" accept="image/*"></label>
+      <button class="btn primary" id="n-save">Post to Our Nest</button>
+    </div>
+    <div class="list" id="nList"><div class="empty">Loading…</div></div>`;
+  let img = null, items = [];
+  if (canPost) {
+    $("#nAddBtn", el).onclick = () => { $("#nForm", el).hidden = !$("#nForm", el).hidden; };
+    $("#n-img", el).onchange = async (e) => { const f = e.target.files[0]; if (!f) return; img = await compressImage(f, 1200, 0.8); $("#nImgBox img", el)?.remove(); $("#nImgBox", el).insertAdjacentHTML("beforeend", `<img src="${URL.createObjectURL(img)}" alt="">`); };
+    $("#n-save", el).onclick = async () => {
+      const title = $("#n-title", el).value.trim(), category = $("#n-cat", el).value, description = $("#n-desc", el).value.trim(), phone = $("#n-phone", el).value;
+      if (title.length < 2) return toast("Enter the business name.");
+      if (!category) return toast("Choose a category.");
+      if (description.length < 10) return toast("Describe what you offer.");
+      if (!validMobile(phone)) return toast("Enter a valid 10-digit mobile number.");
+      if (!img) return toast("Add a photo.");
+      const btn = $("#n-save", el); btn.disabled = true;
+      try {
+        const nref = doc(collection(db, "nest"));
+        const path = `nest/${user.uid}/${nref.id}.jpg`;
+        await uploadBytes(ref(storage, path), img, { contentType: "image/jpeg" });
+        await setDoc(nref, { ownerUid: user.uid, ownerName: p.name, phase: p.phase, house: p.house, title, category, description, phone: cleanMobile(phone), imagePath: path, createdAt: serverTimestamp() });
+        toast("Posted to Our Nest."); $("#nForm", el).hidden = true; img = null;
+        ["n-title", "n-desc"].forEach((id) => ($("#" + id, el).value = "")); $("#n-cat", el).value = ""; $("#nImgBox img", el)?.remove();
+      } catch (e) { console.error(e); toast("Could not post. Try again."); }
+      btn.disabled = false;
+    };
+  }
+  cleanups.push(onSnapshot(query(collection(db, "nest"), orderBy("createdAt", "desc")), (s) => {
+    items = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const box = $("#nList", el);
+    box.innerHTML = items.length ? items.map((n) => nestCard(n, n.ownerUid === user.uid)).join("") : `<div class="empty">No listings yet.${canPost ? " Be the first to add your business." : ""}</div>`;
+    hydrateNest(box); bindNestDelete(box, (id) => items.find((x) => x.id === id)?.imagePath);
+  }, (e) => console.error(e)));
+}
+function hydrateNest(root) {
+  $$(".nestimg[data-photo]", root).forEach(async (d) => { const u = await photoUrl(d.dataset.photo); if (u) d.style.backgroundImage = `url("${u}")`; });
+}
+function renderAdminNest(pane, paneCleanups) {
+  pane.innerHTML = `<div class="list" id="anList"><div class="empty">Loading…</div></div>`;
+  let items = [];
+  paneCleanups.push(onSnapshot(query(collection(db, "nest"), orderBy("createdAt", "desc")), (s) => {
+    items = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const box = $("#anList", pane);
+    box.innerHTML = items.length ? items.map((n) => nestCard(n, true)).join("") : `<div class="empty">No Our Nest listings yet.</div>`;
+    hydrateNest(box); bindNestDelete(box, (id) => items.find((x) => x.id === id)?.imagePath);
+  }, (e) => console.error(e)));
 }
 
 // ---------- images ----------

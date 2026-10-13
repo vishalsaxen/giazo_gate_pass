@@ -7,6 +7,10 @@ Visitor approvals and resident KYC for **Banke Bihari Dham, Dayalbagh, Agra** (H
 - **Owner / Tenant KYC**: every resident uploads all required documents. Owners: Aadhaar, PAN, Sale Deed, Electricity Bill. Tenants: Aadhaar, Rent Agreement, Police Verification, Owner NOC.
 - **Guard shift check-in**: Morning or Evening guards take a selfie when they start; the date and time come from their phone. The visitor form opens only after check-in.
 - **Super Admin** verifies KYC, approves guard accounts, deletes any user (before or after KYC), sees the gate log and guard attendance, and downloads visitor entries and guard attendance as Excel or PDF for any date range.
+- **Contacts** (residents and guards): one-tap Emergency 112, Police 100, Fire Brigade 101, Ambulance 108, the society security desk, and the Core Leadership (President, Vice President, Secretary, Joint Secretary, Treasurer) with mobile numbers. The Super Admin edits these under **Society info**.
+- **Dues** (verified residents): society UPI ID, QR code and bank details, dues for all houses or one house, Pay by UPI app, and "I have paid" with a reference number and receipt. The Super Admin adds dues and confirms or rejects receipts.
+- **Our Nest** (verified residents): verified owners list their salon, cloud kitchen, tuition and other home businesses with a photo and phone number. Owners remove their own; the Super Admin can remove any.
+- **Guards see no member details**: the security rules block guards from KYC files, dues, payments, payment details and Our Nest. Guards only see the gate, their own check-ins and the Contacts screen.
 - The login page has separate **Resident** (rose) and **Security Guard** (teal) tabs, and guard screens stay teal.
 
 Live app: https://vishalsaxen.github.io/giazo_gate_pass/
@@ -45,6 +49,11 @@ Residents tap **Turn on buzzer** once per visit to the app. While the app is ope
 | --- | --- |
 | `users/{uid}` | name, phone, role (`resident` or `guard`), Owner/Tenant, phase, house, `kycStatus` (`none`, `pending`, `approved`, `rejected`), uploaded document paths |
 | `attendance/{id}` | guard, shift (Morning/Evening), selfie path, date, date and time from the guard's phone, server time |
+| `settings/society` | emergency numbers, security desk, Core Leadership names and mobiles |
+| `settings/payments` | UPI ID, account holder, bank, account number, IFSC, QR code path |
+| `dues/{id}` | title, amount, due date, phase and house (0 means all houses) |
+| `payments/{id}` | due, resident, house, reference number, receipt path, status (`submitted`, `confirmed`, `rejected`) |
+| `nest/{id}` | owner, house, business name, category, description, phone, photo path |
 | `visits/{id}` | visitor name, mobile, photo path, phase, house, Owner/Tenant/Vacant, status (`pending`, `approved`, `denied`), guard, who decided and when |
 
 Files live in Storage under `visitors/`, `attendance/{uid}/` and `kyc/{uid}/`. Deleting a user removes their profile and KYC files; their sign-in account stays in Firebase Authentication until you delete it there too. Excel and PDF export libraries (SheetJS 0.18.5, jsPDF 2.5.1, jsPDF-AutoTable 3.8.2) are bundled in `public/vendor/`. KYC files are readable only by their owner and the Super Admin.

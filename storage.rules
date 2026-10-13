@@ -29,6 +29,32 @@ service firebase.storage {
       allow delete: if isAdmin();
     }
 
+    function notGuard() { return signedIn() && !isGuard(); }
+
+    // UPI QR code for dues: residents and the Super Admin, never guards.
+    match /settings/{file} {
+      allow read: if notGuard();
+      allow write: if isAdmin();
+    }
+
+    // Payment receipts: the resident who uploaded them and the Super Admin.
+    match /receipts/{uid}/{file} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid && !isGuard()
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if isAdmin();
+    }
+
+    // Our Nest photos: residents and the Super Admin, never guards.
+    match /nest/{uid}/{file} {
+      allow read: if notGuard();
+      allow create: if signedIn() && request.auth.uid == uid && !isGuard()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
     // KYC documents: only the resident who uploaded them and the Super Admin can see them.
     match /kyc/{uid}/{file} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
