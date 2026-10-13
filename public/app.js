@@ -111,7 +111,7 @@ onAuthStateChanged(auth, async (user) => {
   resetListeners();
   setTheme("");
   if (!user) return renderLogin();
-  if (isAdminUser(user)) return renderAdmin(user);
+  if (isAdminUser(user)) return store.get("portal") === "guard" ? renderAdminOnGuardTab(user) : renderAdmin(user);
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     if (!snap.exists()) return renderOnboarding(user);
@@ -140,6 +140,21 @@ function watchProfile(user) {
     else renderResident(user, p);
   }, (e) => { console.error(e); renderError("Could not load your profile."); });
   cleanups.push(off);
+}
+
+function renderAdminOnGuardTab(user) {
+  setTheme("guard");
+  app.innerHTML = `
+    ${appbar("Security Guard login", user.email || "", user)}
+    <div class="card">
+      <h3>This is the Super Admin account</h3>
+      <p>You signed in on the Security Guard tab with ${esc(user.email)}, which is the Super Admin. Guards need their own Google account or email login.</p>
+      <button class="btn primary" id="useOther">Sign in with the guard's account</button>
+      <button class="btn ghost" id="openAdmin">Open Super Admin instead</button>
+    </div>`;
+  $("#useOther").onclick = () => signOut(auth);
+  $("#openAdmin").onclick = () => { store.set("portal", "resident"); setTheme(""); renderAdmin(user); };
+  bindLogout();
 }
 
 function renderError(msg) {
@@ -189,7 +204,9 @@ function renderLogin() {
   showPortal();
   let creating = false;
   $("#google").onclick = async () => {
-    try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" }); // shared gate phones: always ask which Google account
+    try { await signInWithPopup(auth, provider); }
     catch (e) { if (e.code !== "auth/popup-closed-by-user") toast(authMsg(e)); }
   };
   $("#toggle").onclick = () => {
