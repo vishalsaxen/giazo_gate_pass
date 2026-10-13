@@ -17,12 +17,17 @@ const HOUSES = 40;
 const RING_WINDOW_MS = 5 * 60 * 1000;   // a pending visit older than this stops ringing
 const GUARD_WAIT_MS = 2 * 60 * 1000;    // guard sees "no answer yet" after this
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const docsFor = (u) => (u.requestedRole === "guard" || u.role === "guard" ? KYC_DOCS.Guard : KYC_DOCS[u.residentType] || KYC_DOCS.Owner);
 const KYC_DOCS = {
   Owner: [
     ["aadhaar", "Aadhaar Card", "Front and back in one file"],
     ["pan", "PAN Card", "Self-attested copy"],
     ["saleDeed", "Sale Deed / Registry", "Registered copy"],
     ["electricityBill", "Electricity Bill", "Any of the last 3 months"]
+  ],
+  Guard: [
+    ["aadhaar", "Aadhaar Card", "Front and back in one file"],
+    ["policeVerification", "Police Verification", "Character certificate from Agra police"]
   ],
   Tenant: [
     ["aadhaar", "Aadhaar Card", "Front and back in one file"],
@@ -65,7 +70,7 @@ const store = {
   get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} }
 };
-function setTheme(role) { document.body.classList.toggle("guard-theme", role === "guard"); app.classList.remove("has-nav"); }
+function setTheme(role) { document.body.classList.toggle("guard-theme", role === "guard"); document.body.classList.toggle("admin-theme", role === "admin"); app.classList.remove("has-nav"); }
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -112,6 +117,7 @@ onAuthStateChanged(auth, async (user) => {
   setTheme("");
   if (!user) return renderLogin();
   if (isAdminUser(user)) return store.get("portal") === "guard" ? renderAdminOnGuardTab(user) : renderAdmin(user);
+  if (store.get("portal") === "admin") return renderNotAdmin(user);
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     if (!snap.exists()) return renderOnboarding(user);
@@ -142,6 +148,18 @@ function watchProfile(user) {
   cleanups.push(off);
 }
 
+function renderNotAdmin(user) {
+  setTheme("admin");
+  app.innerHTML = `
+    ${appbar("Super Admin login", user.email || "", user)}
+    <div class="card">
+      <h3>This account is not the Super Admin</h3>
+      <p>${esc(user.email)} cannot open the Super Admin screens. Sign in with the Super Admin's Google account, or use the Resident or Security Guard tab.</p>
+      <button class="btn primary" id="useOther">Sign in with another account</button>
+    </div>`;
+  $("#useOther").onclick = () => { store.set("portal", "resident"); signOut(auth); };
+  bindLogout();
+}
 function renderAdminOnGuardTab(user) {
   setTheme("guard");
   app.innerHTML = `
@@ -170,12 +188,13 @@ function bindLogout() { const b = $("#logout"); if (b) b.onclick = () => signOut
 
 // ---------- login ----------
 function renderLogin() {
-  let portal = store.get("portal") === "guard" ? "guard" : "resident";
+  let portal = ["guard", "admin"].includes(store.get("portal")) ? store.get("portal") : "resident";
   app.innerHTML = `
     <div class="brand"><img src="icon.svg" alt=""><h1>GiaZo Gate Pass</h1><p class="muted">${SOCIETY}</p></div>
     <div class="portal" role="tablist" aria-label="Who is signing in">
       <button role="tab" class="p-res" data-portal="resident">Resident<small>Owner or Tenant sign up</small></button>
       <button role="tab" class="p-grd" data-portal="guard">Security Guard<small>Guard login</small></button>
+      <button role="tab" class="p-adm" data-portal="admin">Super Admin<small>Approvals</small></button>
     </div>
     <div class="card">
       <h3 id="portalTitle"></h3>
@@ -195,9 +214,12 @@ function renderLogin() {
   const showPortal = () => {
     store.set("portal", portal); setTheme(portal);
     $$(".portal button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.portal === portal)));
-    $("#portalTitle").textContent = portal === "guard" ? "Security Guard login" : "Resident sign in or sign up";
+    $("#portalTitle").textContent = { guard: "Security Guard login", admin: "Super Admin login" }[portal] || "Resident sign in or sign up";
+    $("#emailForm").hidden = portal === "admin";
+    $(".divider").hidden = portal === "admin";
     $("#portalHint").textContent = portal === "guard"
       ? "New guards sign up here too. The Super Admin approves guard access before the gate screen opens."
+      : portal === "admin" ? "Only the Super Admin's Google account can open this."
       : "Residents sign up here, then upload KYC documents for the Super Admin to verify.";
   };
   $(".portal").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; portal = b.dataset.portal; showPortal(); };
@@ -300,8 +322,11 @@ function renderOnboarding(user) {
 
 function renderWaitingGuard(user, p) {
   app.innerHTML = `${appbar("Hi, " + p.name.split(" ")[0], "Security guard", user)}
-    <div class="card"><h3>Waiting for approval</h3><p>The Super Admin needs to approve your guard access. This screen will update by itself once it is done.</p></div>`;
+    <div class="card"><h3>Guard approval</h3><p>Upload your Aadhaar Card and police verification, then send them to the Super Admin. This screen opens the gate by itself once you are approved.</p></div>
+    <div id="kycBanner"></div>
+    <div class="card" id="kycCard"></div>`;
   bindLogout();
+  refreshKyc(user, p);
 }
 
 // ---------- guard ----------
@@ -554,10 +579,10 @@ function refreshKyc(user, p) {
   if (!banner || !card) return;
   const st = p.kycStatus;
   banner.innerHTML = st === "approved" ? "" :
-    st === "pending" ? `<div class="banner warn">Your documents are with the Super Admin for verification. Visitor alerts start once you are verified.</div>` :
+    st === "pending" ? `<div class="banner warn">Your documents are with the Super Admin for verification. ${p.requestedRole === "guard" ? "The gate screen opens once you are approved." : "Visitor alerts start once you are verified."}</div>` :
     st === "rejected" ? `<div class="banner no">Your KYC was not approved${p.kycNote ? `: ${esc(p.kycNote)}` : ""}. Re-upload the documents and send them again.</div>` :
-    `<div class="banner rose">Upload all your documents to get verified. Visitor alerts start once the Super Admin approves them.</div>`;
-  const list = KYC_DOCS[p.residentType] || KYC_DOCS.Owner;
+    `<div class="banner rose">Upload all your documents to get verified. ${p.requestedRole === "guard" ? "The gate screen opens" : "Visitor alerts start"} once the Super Admin approves them.</div>`;
+  const list = docsFor(p);
   const docs = p.docs || {};
   const locked = st === "approved" || st === "pending";
   const have = list.filter(([k]) => docs[k]).length;
@@ -627,11 +652,12 @@ function notify(v) {
 
 // ---------- admin ----------
 function renderAdmin(user) {
+  setTheme("admin");
   app.innerHTML = `
     ${appbar("Super Admin", "GiaZo Gate Pass", user)}
-    <div class="stats"><div class="stat"><b id="sPend">–</b><small>KYC pending</small></div><div class="stat"><b id="sOk">–</b><small>Verified</small></div><div class="stat"><b id="sGate">–</b><small>Gate waiting</small></div></div>
+    <div class="stats"><div class="stat"><b id="sPend">–</b><small>To approve</small></div><div class="stat"><b id="sOk">–</b><small>Verified</small></div><div class="stat"><b id="sGate">–</b><small>Gate waiting</small></div></div>
     <div class="tabs" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="kyc">KYC requests</button>
+      <button role="tab" aria-selected="true" data-tab="kyc">Approvals</button>
       <button role="tab" aria-selected="false" data-tab="people">People</button>
       <button role="tab" aria-selected="false" data-tab="gate">Gate log</button>
       <button role="tab" aria-selected="false" data-tab="attendance">Guard attendance</button>
@@ -671,7 +697,10 @@ function renderAdmin(user) {
       hydratePhotos(pane);
     } else if (tab === "kyc") {
       const rows = users.filter((u) => u.kycStatus === "pending").sort((a, b) => ms(a.kycSubmittedAt) - ms(b.kycSubmittedAt));
-      pane.innerHTML = rows.length ? rows.map(kycReq).join("") : `<div class="empty">No KYC requests waiting.</div>`;
+      const guards = rows.filter((u) => u.requestedRole === "guard"), residents = rows.filter((u) => u.requestedRole !== "guard");
+      const waitingDocs = users.filter((u) => u.requestedRole === "guard" && u.kycStatus !== "pending").length;
+      pane.innerHTML = `<h3>Security guards</h3>${guards.length ? guards.map(kycReq).join("") : `<div class="empty">No guards waiting.${waitingDocs ? ` ${waitingDocs} still uploading documents.` : ""}</div>`}
+        <h3>Residents' KYC</h3>${residents.length ? residents.map(kycReq).join("") : `<div class="empty">No residents waiting.</div>`}`;
     } else if (tab === "people") {
       const rows = [...users].sort((a, b) => (a.phase - b.phase) || (a.house - b.house));
       pane.innerHTML = rows.length ? rows.map(personRow).join("") : `<div class="empty">Nobody has signed up yet.</div>`;
@@ -684,13 +713,14 @@ function renderAdmin(user) {
   }
 }
 function kycReq(u) {
-  const list = KYC_DOCS[u.residentType] || KYC_DOCS.Owner;
+  const list = docsFor(u);
   const docs = u.docs || {};
+  const isGuardReq = u.requestedRole === "guard";
   return `<div class="card" style="gap:10px">
-    <div class="row"><div class="avatar">${esc(initials(u.name))}</div><div class="grow" style="flex:1;min-width:0"><b>${esc(u.name)}</b><div class="small muted">${esc(addrLine(u.phase, u.house))} · +91 ${esc(u.phone)}</div><div class="small muted">${esc(u.email)}</div></div><span class="pill rose">${esc(u.residentType)}</span></div>
+    <div class="row"><div class="avatar">${esc(initials(u.name))}</div><div class="grow" style="flex:1;min-width:0"><b>${esc(u.name)}</b><div class="small muted">${isGuardReq ? "Security guard" : esc(addrLine(u.phase, u.house))} · +91 ${esc(u.phone)}</div><div class="small muted">${esc(u.email)}</div></div><span class="pill ${isGuardReq ? "ok" : "rose"}">${isGuardReq ? "Guard" : esc(u.residentType)}</span></div>
     <div class="chips">${list.map(([k, label]) => docs[k] ? `<button class="chip" data-open="${esc(docs[k].path)}">${label}</button>` : `<span class="chip missing">${label} missing</span>`).join("")}</div>
     <input class="input" placeholder="Reason, if rejecting" id="note-${u.id}">
-    <div class="actions"><button class="btn deny sm" style="width:100%" data-kyc="${u.id}" data-s="rejected">Reject</button><button class="btn approve sm" style="width:100%" data-kyc="${u.id}" data-s="approved" ${list.every(([k]) => docs[k]) ? "" : "disabled"}>Approve</button></div>
+    <div class="actions"><button class="btn deny sm" style="width:100%" data-kyc="${u.id}" data-s="rejected">Reject</button><button class="btn approve sm" style="width:100%" data-kyc="${u.id}" data-s="approved" ${isGuardReq ? `data-guard="1"` : ""} ${list.every(([k]) => docs[k]) ? "" : "disabled"}>${isGuardReq ? "Approve guard" : "Approve"}</button></div>
   </div>`;
 }
 function personRow(u) {
@@ -699,7 +729,7 @@ function personRow(u) {
   const act = u.role === "guard"
     ? `<button class="btn ghost sm" data-role="${u.id}" data-r="resident">Remove guard</button>`
     : u.requestedRole === "guard"
-      ? `<button class="btn primary sm" data-role="${u.id}" data-r="guard">Approve guard</button>`
+      ? `<span class="small muted">Approve in Approvals</span>`
       : u.kycStatus === "approved" ? `<button class="btn ghost sm" data-kyc="${u.id}" data-s="none">Revoke KYC</button>` : "";
   return `<div class="card" style="padding:12px;gap:10px"><div class="item" style="padding:0"><div class="avatar">${esc(initials(u.name))}</div><div class="t"><b>${esc(u.name)}</b><small>${esc(where)} · +91 ${esc(u.phone)}</small></div>
     ${u.role === "guard" ? `<span class="pill ok">Guard</span>` : u.requestedRole === "guard" ? `<span class="pill wait">Wants guard</span>` : `<span class="pill ${kyc[0]}">${kyc[1]}</span>`}</div>
@@ -715,8 +745,9 @@ function bindAdminActions(user, users) {
     if (s === "rejected" && !note) return toast("Add a reason so the resident knows what to fix.");
     b.disabled = true;
     try {
-      await updateDoc(doc(db, "users", id), { kycStatus: s, kycNote: s === "rejected" ? note : "", reviewedBy: user.email, reviewedAt: serverTimestamp() });
-      toast(s === "approved" ? "Resident verified." : s === "rejected" ? "KYC rejected." : "KYC revoked.");
+      const extra = b.dataset.guard ? { role: "guard", requestedRole: "" } : {};
+      await updateDoc(doc(db, "users", id), { kycStatus: s, kycNote: s === "rejected" ? note : "", reviewedBy: user.email, reviewedAt: serverTimestamp(), ...extra });
+      toast(b.dataset.guard ? "Guard approved." : s === "approved" ? "Resident verified." : s === "rejected" ? "KYC rejected." : "KYC revoked.");
     } catch (e) { console.error(e); toast("Could not save. Try again."); b.disabled = false; }
   }));
   $$("[data-role]").forEach((b) => (b.onclick = async () => {

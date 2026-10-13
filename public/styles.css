@@ -143,7 +143,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--rose-soft);padding:
 body.guard-theme{--wash:#EAF3F2;--rose:#3F8E8C;--rose-deep:#2B6A68;--rose-soft:#E1EFEE;--rose-tint:#CFE5E3}
 @media (prefers-color-scheme:dark){body.guard-theme{--wash:#141D1D;--rose:#5FB0AD;--rose-deep:#8ED0CD;--rose-soft:#203030;--rose-tint:#1A2727}}
 
-.portal{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.portal{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .portal button{border:2px solid transparent;border-radius:20px;padding:14px 10px;font:700 15px var(--f);cursor:pointer;display:flex;flex-direction:column;gap:2px;align-items:center;text-align:center}
 .portal button small{font-size:11px;font-weight:500;opacity:.85}
 .portal .p-res{background:#FBEDEC;color:#C9706F}
@@ -170,3 +170,9 @@ input[type="date"].input{min-height:46px}
 textarea.input{resize:vertical;font-family:var(--f)}
 .nestcard{gap:10px}
 .nestimg{height:160px;border-radius:16px;background:var(--rose-soft) center/cover no-repeat}
+
+.portal .p-adm{background:#ECE6F0;color:#5B4368}
+.portal .p-adm[aria-selected="true"]{background:#6E537C;color:#fff;border-color:#5B4368}
+.portal button{padding:12px 6px;font-size:14px}
+body.admin-theme{--wash:#F1ECF4;--rose:#6E537C;--rose-deep:#5B4368;--rose-soft:#ECE6F0;--rose-tint:#DED3E5}
+@media (prefers-color-scheme:dark){body.admin-theme{--wash:#1A151D;--rose:#A98BB8;--rose-deep:#C9AED6;--rose-soft:#2C2331;--rose-tint:#241D28}}

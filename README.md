@@ -11,7 +11,8 @@ Visitor approvals and resident KYC for **Banke Bihari Dham, Dayalbagh, Agra** (H
 - **Dues** (verified residents): society UPI ID, QR code and bank details, dues for all houses or one house, Pay by UPI app, and "I have paid" with a reference number and receipt. The Super Admin adds dues and confirms or rejects receipts.
 - **Our Nest** (verified residents): verified owners list their salon, cloud kitchen, tuition and other home businesses with a photo and phone number. Owners remove their own; the Super Admin can remove any.
 - **Guards see no member details**: the security rules block guards from KYC files, dues, payments, payment details and Our Nest. Guards only see the gate, their own check-ins and the Contacts screen.
-- The login page has separate **Resident** (rose) and **Security Guard** (teal) tabs, and guard screens stay teal.
+- The login page has three tabs: **Resident** (rose), **Security Guard** (teal) and **Super Admin** (plum). The Super Admin tab only lets the Super Admin's Google account in.
+- Guards upload an Aadhaar Card and police verification when they sign up. The Super Admin approves guards and resident KYC on one **Approvals** screen.
 
 Live app: https://vishalsaxen.github.io/giazo_gate_pass/
 
