@@ -344,6 +344,7 @@ function setupCheckin(user, p) {
       img.src = URL.createObjectURL(selfie);
     } catch { toast("Could not read that photo. Try again."); }
   };
+  useCamera($("#selfieBox"), $("#selfie"), "user");
   $("#moreShift").onclick = () => { $("#shiftForm").hidden = false; $("#moreShift").hidden = true; };
   $("#checkin").onclick = async () => {
     if (!shift) return toast("Choose Morning or Evening shift.");
@@ -434,6 +435,7 @@ function renderGuard(user, p) {
   $("#phase").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; phase = +b.dataset.p; pressGroup($("#phase"), b); showAddr(); };
   $("#houses").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; house = +b.dataset.h; pressGroup($("#houses"), b); showAddr(); };
   $("#occ").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; occ = b.dataset.v; pressGroup($("#occ"), b); };
+  useCamera($("#photoBox"), $("#photo"), "environment");
   $("#photo").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try {
@@ -1152,6 +1154,69 @@ function renderAdminNest(pane, paneCleanups) {
     box.innerHTML = items.length ? items.map((n) => nestCard(n, true)).join("") : `<div class="empty">No Our Nest listings yet.</div>`;
     hydrateNest(box); bindNestDelete(box, (id) => items.find((x) => x.id === id)?.imagePath);
   }, (e) => console.error(e)));
+}
+
+// ---------- in-app camera with front/back switch ----------
+// Tapping a photo box opens a live camera. The guard can flip between the front and back
+// camera before taking the picture. If the browser cannot open the camera, the phone's own
+// camera app opens instead through the file input.
+let camBlocked = false;
+function useCamera(box, input, facing) {
+  box.addEventListener("click", async (e) => {
+    if (e.target === input || camBlocked || !navigator.mediaDevices?.getUserMedia || typeof DataTransfer === "undefined") return;
+    e.preventDefault();
+    const blob = await openCamera(facing, () => input.click());
+    if (!blob) return;
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change"));
+  });
+}
+function openCamera(startFacing, fallback) {
+  return new Promise((resolve) => {
+    let facing = startFacing, stream = null, done = false;
+    const ov = document.createElement("div");
+    ov.className = "camera";
+    ov.innerHTML = `<video playsinline autoplay muted></video>
+      <div class="camtop"><span id="camLabel"></span><button type="button" class="cambtn" data-c="close" aria-label="Close camera">✕</button></div>
+      <div class="cambar">
+        <button type="button" class="cambtn" data-c="flip" aria-label="Switch camera"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2M14 9v2h-2M10 17v-2h2"/></svg></button>
+        <button type="button" class="shutter" data-c="shoot" aria-label="Take photo"></button>
+        <button type="button" class="cambtn small" data-c="app">Phone camera</button>
+      </div>`;
+    document.body.appendChild(ov);
+    const video = ov.querySelector("video");
+    const stop = () => stream?.getTracks().forEach((t) => t.stop());
+    const finish = (val) => { if (done) return; done = true; stop(); ov.remove(); resolve(val); };
+    async function start() {
+      stop();
+      ov.querySelector("#camLabel").textContent = facing === "user" ? "Front camera" : "Back camera";
+      video.classList.toggle("mirror", facing === "user");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+        video.srcObject = stream;
+      } catch (err) {
+        console.error(err);
+        camBlocked = true;
+        toast("Camera blocked. Allow camera access for this site, or tap again to use the phone camera.");
+        finish(null); fallback();
+      }
+    }
+    ov.onclick = async (e) => {
+      const c = e.target.closest("[data-c]")?.dataset.c;
+      if (c === "close") finish(null);
+      else if (c === "app") { finish(null); fallback(); }
+      else if (c === "flip") { facing = facing === "user" ? "environment" : "user"; start(); }
+      else if (c === "shoot" && video.videoWidth) {
+        const cv = document.createElement("canvas");
+        cv.width = video.videoWidth; cv.height = video.videoHeight;
+        cv.getContext("2d").drawImage(video, 0, 0);
+        cv.toBlob((b) => finish(b), "image/jpeg", 0.9);
+      }
+    };
+    start();
+  });
 }
 
 // ---------- images ----------
