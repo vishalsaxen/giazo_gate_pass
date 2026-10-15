@@ -33,6 +33,21 @@ With the Firebase CLI you can do steps 4 and 5 in one go: `firebase deploy --onl
 - **GitHub Pages:** repo Settings > Pages > Source: **GitHub Actions**. Every push to `main` deploys `public/`.
 - **Firebase Hosting (optional):** `firebase deploy --only hosting` serves the same files at `https://giazo-gate-pass.web.app`.
 
+## Android app
+
+`android/` wraps the live web app as an Android app (a Trusted Web Activity: the app opens the site full screen in Chrome, so Google sign-in, the camera and the buzzer work as they do in the browser). The **Build Android app** workflow builds an installable `.apk` and a Play Store `.aab` on every change under `android/` and publishes them as a GitHub release. Web app changes reach the Android app without a rebuild.
+
+To sign for the Play Store, create an upload key once and add it as repository secrets (Settings > Secrets and variables > Actions):
+
+```
+keytool -genkeypair -v -keystore giazo-upload.jks -alias giazo -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 giazo-upload.jks   # value for ANDROID_KEYSTORE_BASE64
+```
+
+Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`giazo`), `ANDROID_KEY_PASSWORD`. Keep the `.jks` file and passwords safe; every Play Store update must be signed with the same key. Without the secrets the build is signed with a throwaway debug key.
+
+To hide Chrome's address bar, publish `https://vishalsaxen.github.io/.well-known/assetlinks.json` (from a `vishalsaxen.github.io` repository) with package `com.giazo.gatepass` and the signing certificate SHA-256 shown on each release.
+
 ## How people get access
 
 1. Everyone signs in (Google or email) and fills in their name, mobile and role.

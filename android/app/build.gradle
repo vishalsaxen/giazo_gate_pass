@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The app opens this address. Change it here if the web app moves.
+def webHost = 'vishalsaxen.github.io'
+def startUrl = 'https://vishalsaxen.github.io/giazo_gate_pass/'
+
+// Release signing comes from environment variables (set from GitHub secrets in CI).
+// Without them the release build is signed with the debug key, which installs fine
+// but cannot be uploaded to the Play Store.
+def keystoreFile = System.getenv('ANDROID_KEYSTORE_FILE')
+def hasReleaseKey = keystoreFile && file(keystoreFile).exists()
+
+android {
+    namespace 'com.giazo.gatepass'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.giazo.gatepass'
+        minSdk 23
+        targetSdk 36
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+        versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
+
+        manifestPlaceholders = [
+            hostName: webHost,
+            launchUrl: startUrl,
+        ]
+        resValue 'string', 'asset_statements',
+            "[{ \\\"relation\\\": [\\\"delegate_permission/common.handle_all_urls\\\"], \\\"target\\\": { \\\"namespace\\\": \\\"web\\\", \\\"site\\\": \\\"https://${webHost}\\\" } }]"
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(keystoreFile)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
